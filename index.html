@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scuola Manager</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="firebase-init.js"></script>
+<script>
+  // Smista: utente autorizzato → app, altrimenti → login
+  smAuthReady.then(u => {
+    window.location.replace(smIsAllowed(u) ? 'app.html' : 'login.html');
+  });
+</script>
+</head>
+<body style="background:#0f0f0f"></body>
+</html>
