@@ -2,7 +2,10 @@
 const state = {
   view: 'dashboard',       // 'dashboard' | 'alunni' | 'classi' | 'voti' | 'report' | 'alunno-detail'
   previousView: 'alunni',  // vista da cui si è aperta la scheda alunno (per il "← Torna")
-  year: 'all',             // filtro anno scolastico
+  // Filtro anno scolastico: parte sempre sull'A.S. corrente (settembre–agosto,
+  // stessa regola di DB.currentAnno) invece che su "Tutti gli anni" — resta
+  // comunque una select libera, l'utente può sempre cambiarlo manualmente.
+  year: DB.currentAnno(),
   istituto: 'all',         // filtro istituto
   klass: 'all',            // filtro classe
   search: '',
@@ -401,7 +404,9 @@ function buildFilterBar() {
   const selI = document.getElementById('filter-istituto');
   const selC = document.getElementById('filter-classe');
 
-  const years = ['all', ...allYears()];
+  // L'A.S. corrente è sempre selezionabile, anche prima che esistano dati per
+  // quell'anno (nuovo anno scolastico appena iniziato, ancora senza alunni/voti)
+  const years = ['all', ...[...new Set([...allYears(), DB.currentAnno()])].sort()];
   selY.innerHTML = years.map(y =>
     `<option value="${escHtml(y)}" ${state.year === y ? 'selected' : ''}>${y === 'all' ? 'Tutti gli anni' : y}</option>`).join('');
 
@@ -3053,18 +3058,18 @@ function renderColloqui() {
   const colloquioRowHtml = ({ anno, c }) => {
     const s = state.students.find(x => x.id === c.studenteId);
     const classe = s ? (classeOf(s, anno) || '') : '';
-    const note = c.note || '';
+    const note = richToPlainText(c.note);
     const key = anno + '|' + c.id;
     return `<tr class="row-selectable ${state.colloquiSelected.has(key) ? 'selected' : ''}" data-anno="${escHtml(anno)}" data-id="${c.id}" data-key="${escHtml(key)}">
             <td class="row-drag" title="Seleziona"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/><circle cx="16" cy="6" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="16" cy="18" r="1.6"/></svg></td>
             <td class="vt-mono">${fmtData(c.data)}</td>
             <td class="vt-mono">${escHtml(c.ora || '—')}</td>
-            <td>${s ? escHtml(s.cognome) + ' ' + escHtml(s.nome) : '<span class="stat-sub">—</span>'}</td>
+            <td class="name-open" data-anno="${escHtml(anno)}" data-id="${c.id}" title="Apri">${s ? escHtml(s.cognome) + ' ' + escHtml(s.nome) : '<span class="stat-sub">—</span>'}</td>
             <td>${escHtml(classe || '—')}</td>
             <td>${escHtml(c.partecipanti || '—')}</td>
             <td class="stat-sub" title="${escHtml(note)}">${escHtml(note.length > 40 ? note.slice(0, 40) + '…' : note)}</td>
             <td class="vt-actions">
-              ${c.meetLink ? `<a class="grade-edit" href="${escHtml(c.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
+              ${c.meetLink ? `<a class="grade-meet" href="${escHtml(c.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l5-3v10l-5-3"/><rect x="1" y="6" width="14" height="12" rx="2"/></svg>
               </a>` : ''}
               <button class="grade-edit" data-anno="${escHtml(anno)}" data-id="${c.id}" title="Modifica">
@@ -3107,7 +3112,7 @@ function renderColloqui() {
     colloquiWrap.innerHTML = `<table class="voti-table"><thead><tr>${colloquiThead}</tr></thead><tbody>${rows.map(colloquioRowHtml).join('')}</tbody></table>`;
     activeContainer = colloquiWrap;
   }
-  activeContainer.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openColloquio(btn.dataset.anno, btn.dataset.id); }));
+  activeContainer.querySelectorAll('.grade-edit, .name-open').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openColloquio(btn.dataset.anno, btn.dataset.id); }));
   activeContainer.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Eliminare questo colloquio?')) return;
@@ -3119,7 +3124,7 @@ function renderColloqui() {
     } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
   }));
   activeContainer.querySelectorAll('tr[data-key]').forEach(row => row.addEventListener('click', e => {
-    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm')) return;
+    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm') || e.target.closest('.grade-meet') || e.target.closest('.name-open')) return;
     const key = row.dataset.key;
     if (state.colloquiSelected.has(key)) state.colloquiSelected.delete(key);
     else state.colloquiSelected.add(key);
@@ -3157,22 +3162,128 @@ document.getElementById('btn-colloqui-select-all').addEventListener('click', () 
   renderColloqui();
 });
 
+// ── Editor di testo ricco (Colloqui/Appuntamenti): titolo, elenchi puntati/
+//    numerati, checkbox — stile Notion. Usa document.execCommand: deprecato
+//    ma pienamente supportato nei browser Chromium (unico target di
+//    quest'app). Il campo "note" passa da testo semplice a frammento HTML:
+//    plainNoteToHtml() converte le note vecchie al primo utilizzo,
+//    sanitizeRichHtml() filtra l'HTML prodotto dall'editor prima di salvarlo
+//    (solo i tag/attributi in whitelist sopravvivono).
+const RICH_ALLOWED_TAGS = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', 'H3', 'DIV', 'INPUT']);
+function sanitizeRichHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  (function walk(node) {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === 1) {
+        if (!RICH_ALLOWED_TAGS.has(child.tagName)) {
+          while (child.firstChild) child.parentNode.insertBefore(child.firstChild, child);
+          child.remove();
+        } else {
+          [...child.attributes].forEach(attr => {
+            const keep = child.tagName === 'INPUT' && (attr.name === 'type' || attr.name === 'checked');
+            if (!keep) child.removeAttribute(attr.name);
+          });
+          if (child.tagName === 'UL' && child.querySelector(':scope > li > input[type="checkbox"]')) child.className = 'chk-list';
+          if (child.tagName === 'INPUT') child.setAttribute('contenteditable', 'false');
+          walk(child);
+        }
+      } else if (child.nodeType !== 3) {
+        child.remove();
+      }
+    });
+  })(tmp);
+  return tmp.innerHTML;
+}
+// Le note salvate prima dell'editor ricco erano testo semplice: le converte
+// in HTML equivalente la prima volta che vengono riaperte (idempotente: se è
+// già HTML — riconoscibile da un tag — la restituisce invariata)
+function plainNoteToHtml(text) {
+  if (!text) return '';
+  if (/<[a-z][\s\S]*>/i.test(text)) return text;
+  return text.split(/\n{2,}/).map(par => `<p>${escHtml(par).replace(/\n/g, '<br>')}</p>`).join('');
+}
+function richToolbarHtml(idPrefix) {
+  return `
+    <div class="rt-toolbar" data-target="${idPrefix}-editor">
+      <button type="button" class="rt-btn" data-cmd="bold" title="Grassetto"><b>B</b></button>
+      <button type="button" class="rt-btn" data-cmd="italic" title="Corsivo"><i>I</i></button>
+      <button type="button" class="rt-btn" data-cmd="heading" title="Titolo">H</button>
+      <button type="button" class="rt-btn" data-cmd="ul" title="Elenco puntato">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button type="button" class="rt-btn" data-cmd="ol" title="Elenco numerato">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><text x="1" y="8" font-size="7" fill="currentColor" stroke="none">1</text><text x="1" y="14" font-size="7" fill="currentColor" stroke="none">2</text><text x="1" y="20" font-size="7" fill="currentColor" stroke="none">3</text></svg>
+      </button>
+      <button type="button" class="rt-btn" data-cmd="checklist" title="Checkbox">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><polyline points="8 12 11 15 16 9"/></svg>
+      </button>
+    </div>
+    <div class="rt-editor" id="${idPrefix}-editor" contenteditable="true" data-placeholder="Scrivi qui…"></div>`;
+}
+function wireRichToolbar(idPrefix) {
+  const editor = document.getElementById(idPrefix + '-editor');
+  document.querySelectorAll(`.rt-toolbar[data-target="${idPrefix}-editor"] .rt-btn`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      editor.focus();
+      const cmd = btn.dataset.cmd;
+      if (cmd === 'bold') document.execCommand('bold');
+      else if (cmd === 'italic') document.execCommand('italic');
+      else if (cmd === 'heading') document.execCommand('formatBlock', false, 'H3');
+      else if (cmd === 'ul') document.execCommand('insertUnorderedList');
+      else if (cmd === 'ol') document.execCommand('insertOrderedList');
+      else if (cmd === 'checklist') document.execCommand('insertHTML', false,
+        '<ul class="chk-list"><li><input type="checkbox" contenteditable="false"> nuovo elemento</li></ul><p></p>');
+    });
+  });
+}
+function setRichValue(idPrefix, note) { document.getElementById(idPrefix + '-editor').innerHTML = plainNoteToHtml(note); }
+function getRichValue(idPrefix) { return sanitizeRichHtml(document.getElementById(idPrefix + '-editor').innerHTML); }
+// Estrae il testo semplice da una nota HTML: per l'anteprima in tabella e
+// per la descrizione dell'evento sincronizzato su Google Calendar (che non
+// interpreta l'HTML) — una riga per blocco, gli elementi di lista diventano
+// righe con un trattino. (.textContent ignora i confini tra elementi, quindi
+// le "righe" vanno ricostruite scorrendo i blocchi di primo livello, non
+// inserendo <br> nel DOM: non produrrebbero comunque newline in .textContent)
+function richToPlainText(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  const lines = [];
+  tmp.childNodes.forEach(node => {
+    if (node.nodeType === 1 && (node.tagName === 'UL' || node.tagName === 'OL')) {
+      node.querySelectorAll(':scope > li').forEach(li => {
+        const t = li.textContent.trim();
+        if (t) lines.push('- ' + t);
+      });
+    } else {
+      const t = node.textContent.trim();
+      if (t) lines.push(t);
+    }
+  });
+  return lines.join('\n');
+}
+
 function colloquioFormBody(c) {
   const studentiOrdinati = state.students.slice().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
   return `
-    <div class="vf-row">
-      <label class="vf-label">Data<input type="date" class="vf-input" id="cl-data" value="${escHtml(c.data || todayISO())}"/></label>
-      <label class="vf-label">Ora<input type="time" class="vf-input" id="cl-ora" value="${escHtml(c.ora || '')}"/></label>
-    </div>
-    <label class="vf-label">Alunno
-      <select class="vf-input" id="cl-studente">
-        <option value="">— Seleziona —</option>
-        ${studentiOrdinati.map(s => `<option value="${s.id}" ${c.studenteId === s.id ? 'selected' : ''}>${escHtml(s.cognome)} ${escHtml(s.nome)}${DB.classeCorrente(s) ? ` (${escHtml(DB.classeCorrente(s))})` : ''}</option>`).join('')}
-      </select>
-    </label>
-    <label class="vf-label">Partecipanti<input class="vf-input" id="cl-partecipanti" placeholder="es. Madre, Padre" value="${escHtml(c.partecipanti || '')}"/></label>
-    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="cl-meet" placeholder="https://meet.google.com/…" value="${escHtml(c.meetLink || '')}"/></label>
-    <label class="vf-label">Note<textarea class="vf-input" id="cl-note">${escHtml(c.note || '')}</textarea></label>`;
+    <div class="modal-body-flex">
+      <div class="vf-row">
+        <label class="vf-label">Data<input type="date" class="vf-input" id="cl-data" value="${escHtml(c.data || todayISO())}"/></label>
+        <label class="vf-label">Ora<input type="time" class="vf-input" id="cl-ora" value="${escHtml(c.ora || '')}"/></label>
+      </div>
+      <div class="vf-row">
+        <label class="vf-label">Alunno
+          <select class="vf-input" id="cl-studente">
+            <option value="">— Seleziona —</option>
+            ${studentiOrdinati.map(s => `<option value="${s.id}" ${c.studenteId === s.id ? 'selected' : ''}>${escHtml(s.cognome)} ${escHtml(s.nome)}${DB.classeCorrente(s) ? ` (${escHtml(DB.classeCorrente(s))})` : ''}</option>`).join('')}
+          </select>
+        </label>
+        <label class="vf-label">Partecipanti<input class="vf-input" id="cl-partecipanti" placeholder="es. Madre, Padre" value="${escHtml(c.partecipanti || '')}"/></label>
+      </div>
+      <label class="vf-label">Link Meet<input type="url" class="vf-input" id="cl-meet" placeholder="https://meet.google.com/…" value="${escHtml(c.meetLink || '')}"/></label>
+      <label class="vf-label">Note</label>
+      ${richToolbarHtml('cl-note')}
+    </div>`;
 }
 let colloquioCtx = null;
 function openColloquio(anno, id) {
@@ -3181,6 +3292,8 @@ function openColloquio(anno, id) {
   colloquioCtx = { anno, id };
   document.getElementById('colloquio-title').textContent = 'Modifica colloquio';
   document.getElementById('colloquio-body').innerHTML = colloquioFormBody(c);
+  wireRichToolbar('cl-note');
+  setRichValue('cl-note', c.note);
   document.getElementById('colloquio-delete').classList.remove('hidden');
   document.getElementById('colloquio-overlay').classList.remove('hidden');
 }
@@ -3188,6 +3301,7 @@ document.getElementById('btn-add-colloquio').addEventListener('click', () => {
   colloquioCtx = null;
   document.getElementById('colloquio-title').textContent = 'Nuovo colloquio';
   document.getElementById('colloquio-body').innerHTML = colloquioFormBody({ data: todayISO() });
+  wireRichToolbar('cl-note');
   document.getElementById('colloquio-delete').classList.add('hidden');
   document.getElementById('colloquio-overlay').classList.remove('hidden');
 });
@@ -3205,7 +3319,7 @@ async function syncColloquioToGCal(anno, id, attrs, prevGcalEventId) {
     gcalEventId: prevGcalEventId,
     title: 'Colloquio' + (s ? ' · ' + s.cognome + ' ' + s.nome : ''),
     dateISO: attrs.data, startTime: attrs.ora,
-    description: [attrs.partecipanti && `Partecipanti: ${attrs.partecipanti}`, attrs.note].filter(Boolean).join('\n'),
+    description: [attrs.partecipanti && `Partecipanti: ${attrs.partecipanti}`, richToPlainText(attrs.note)].filter(Boolean).join('\n'),
     location: attrs.meetLink,
   });
   if (gcalEventId && gcalEventId !== prevGcalEventId) {
@@ -3217,7 +3331,7 @@ document.getElementById('colloquio-save').addEventListener('click', async () => 
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('cl-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
-  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), note: val('cl-note'), meetLink: val('cl-meet') };
+  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), note: getRichValue('cl-note'), meetLink: val('cl-meet') };
   const anno = annoFromData(data);
   try {
     const prevGcalEventId = colloquioCtx ? (DB.getColloqui(colloquioCtx.anno).find(x => x.id === colloquioCtx.id)?.gcalEventId || '') : '';
@@ -3264,7 +3378,9 @@ function renderAppuntamenti() {
   document.getElementById('appuntamenti-empty').classList.toggle('hidden', !!rows.length);
   const appuntamentoRowHtml = ({ anno, a }) => {
     const ora = a.oraFine ? `${a.ora || '—'}–${a.oraFine}` : (a.ora || '—');
-    const oggetto = a.oggetto || '';
+    const oggetto = a.oggetto || TIPI_APPUNTAMENTO[a.tipo] || a.tipo;
+    const oggettoShown = oggetto.length > 40 ? oggetto.slice(0, 40) + '…' : oggetto;
+    const note = richToPlainText(a.note);
     return `<tr class="row-selectable ${state.appuntamentiSelected.has(anno + '|' + a.id) ? 'selected' : ''}" data-anno="${escHtml(anno)}" data-id="${a.id}" data-key="${escHtml(anno + '|' + a.id)}">
             <td class="row-drag" title="Seleziona"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/><circle cx="16" cy="6" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="16" cy="18" r="1.6"/></svg></td>
             <td class="vt-mono">${fmtData(a.data)}</td>
@@ -3272,9 +3388,9 @@ function renderAppuntamenti() {
             <td>${escHtml(TIPI_APPUNTAMENTO[a.tipo] || a.tipo)}</td>
             <td>${a.modalita === 'online' ? 'Online' : 'In presenza'}</td>
             <td>${escHtml(a.classe || '—')}</td>
-            <td class="stat-sub" title="${escHtml(oggetto)}">${escHtml(oggetto.length > 40 ? oggetto.slice(0, 40) + '…' : oggetto)}</td>
+            <td class="name-open" data-anno="${escHtml(anno)}" data-id="${a.id}" title="${escHtml([oggetto, note].filter(Boolean).join(' — '))}">${escHtml(oggettoShown)}</td>
             <td class="vt-actions">
-              ${a.meetLink ? `<a class="grade-edit" href="${escHtml(a.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
+              ${a.meetLink ? `<a class="grade-meet" href="${escHtml(a.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l5-3v10l-5-3"/><rect x="1" y="6" width="14" height="12" rx="2"/></svg>
               </a>` : ''}
               <button class="grade-edit" data-anno="${escHtml(anno)}" data-id="${a.id}" title="Modifica">
@@ -3299,7 +3415,7 @@ function renderAppuntamenti() {
   if (!rows.length) { wrap.innerHTML = ''; panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   wrap.innerHTML = `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${rows.map(appuntamentoRowHtml).join('')}</tbody></table>`;
-  wrap.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openAppuntamento(btn.dataset.anno, btn.dataset.id); }));
+  wrap.querySelectorAll('.grade-edit, .name-open').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openAppuntamento(btn.dataset.anno, btn.dataset.id); }));
   wrap.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Eliminare questo appuntamento?')) return;
@@ -3311,7 +3427,7 @@ function renderAppuntamenti() {
     } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
   }));
   wrap.querySelectorAll('tr[data-key]').forEach(row => row.addEventListener('click', e => {
-    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm')) return;
+    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm') || e.target.closest('.grade-meet') || e.target.closest('.name-open')) return;
     const key = row.dataset.key;
     if (state.appuntamentiSelected.has(key)) state.appuntamentiSelected.delete(key);
     else state.appuntamentiSelected.add(key);
@@ -3350,31 +3466,36 @@ document.getElementById('btn-appuntamenti-select-all').addEventListener('click',
 
 function appuntamentoFormBody(a) {
   return `
-    <label class="vf-label">Tipo
-      <select class="vf-input" id="ap-tipo">
-        ${Object.entries(TIPI_APPUNTAMENTO).map(([k, l]) => `<option value="${k}" ${a.tipo === k ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
-      </select>
-    </label>
-    <div class="vf-row">
-      <label class="vf-label">Data<input type="date" class="vf-input" id="ap-data" value="${escHtml(a.data || todayISO())}"/></label>
-      <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="ap-ora" value="${escHtml(a.ora || '')}"/></label>
-      <label class="vf-label">Ora fine<input type="time" class="vf-input" id="ap-ora-fine" value="${escHtml(a.oraFine || '')}"/></label>
-    </div>
-    <div class="vf-row">
-      <label class="vf-label">Modalità
-        <select class="vf-input" id="ap-modalita">
-          <option value="presenza" ${a.modalita !== 'online' ? 'selected' : ''}>In presenza</option>
-          <option value="online" ${a.modalita === 'online' ? 'selected' : ''}>Online</option>
-        </select>
-      </label>
-      <label class="vf-label">Classe (facoltativa)
-        <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
-        <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
-      </label>
-    </div>
-    <label class="vf-label">Oggetto<input class="vf-input" id="ap-oggetto" placeholder="es. Scrutini primo quadrimestre" value="${escHtml(a.oggetto || '')}"/></label>
-    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>
-    <label class="vf-label">Note<textarea class="vf-input" id="ap-note">${escHtml(a.note || '')}</textarea></label>`;
+    <div class="modal-body-flex">
+      <div class="vf-row">
+        <label class="vf-label">Tipo
+          <select class="vf-input" id="ap-tipo">
+            ${Object.entries(TIPI_APPUNTAMENTO).map(([k, l]) => `<option value="${k}" ${a.tipo === k ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
+          </select>
+        </label>
+        <label class="vf-label">Oggetto<input class="vf-input" id="ap-oggetto" placeholder="es. Scrutini primo quadrimestre" value="${escHtml(a.oggetto || '')}"/></label>
+      </div>
+      <div class="vf-row">
+        <label class="vf-label">Data<input type="date" class="vf-input" id="ap-data" value="${escHtml(a.data || todayISO())}"/></label>
+        <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="ap-ora" value="${escHtml(a.ora || '')}"/></label>
+        <label class="vf-label">Ora fine<input type="time" class="vf-input" id="ap-ora-fine" value="${escHtml(a.oraFine || '')}"/></label>
+      </div>
+      <div class="vf-row">
+        <label class="vf-label">Modalità
+          <select class="vf-input" id="ap-modalita">
+            <option value="presenza" ${a.modalita !== 'online' ? 'selected' : ''}>In presenza</option>
+            <option value="online" ${a.modalita === 'online' ? 'selected' : ''}>Online</option>
+          </select>
+        </label>
+        <label class="vf-label">Classe (facoltativa)
+          <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
+          <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
+        </label>
+        <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>
+      </div>
+      <label class="vf-label">Note</label>
+      ${richToolbarHtml('ap-note')}
+    </div>`;
 }
 let appuntamentoCtx = null;
 function openAppuntamento(anno, id) {
@@ -3383,6 +3504,8 @@ function openAppuntamento(anno, id) {
   appuntamentoCtx = { anno, id };
   document.getElementById('appuntamento-title').textContent = 'Modifica appuntamento';
   document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody(a);
+  wireRichToolbar('ap-note');
+  setRichValue('ap-note', a.note);
   document.getElementById('appuntamento-delete').classList.remove('hidden');
   document.getElementById('appuntamento-overlay').classList.remove('hidden');
 }
@@ -3390,6 +3513,7 @@ document.getElementById('btn-add-appuntamento').addEventListener('click', () => 
   appuntamentoCtx = null;
   document.getElementById('appuntamento-title').textContent = 'Nuovo appuntamento';
   document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody({ data: todayISO(), tipo: 'incontro', modalita: 'presenza' });
+  wireRichToolbar('ap-note');
   document.getElementById('appuntamento-delete').classList.add('hidden');
   document.getElementById('appuntamento-overlay').classList.remove('hidden');
 });
@@ -3406,7 +3530,7 @@ async function syncAppuntamentoToGCal(anno, id, attrs, prevGcalEventId) {
     gcalEventId: prevGcalEventId,
     title: (TIPI_APPUNTAMENTO[attrs.tipo] || attrs.tipo) + (attrs.oggetto ? ' · ' + attrs.oggetto : ''),
     dateISO: attrs.data, startTime: attrs.ora, endTime: attrs.oraFine,
-    description: [attrs.classe && `Classe: ${attrs.classe}`, attrs.modalita === 'online' ? 'Online' : 'In presenza', attrs.note].filter(Boolean).join('\n'),
+    description: [attrs.classe && `Classe: ${attrs.classe}`, attrs.modalita === 'online' ? 'Online' : 'In presenza', richToPlainText(attrs.note)].filter(Boolean).join('\n'),
     location: attrs.meetLink,
   });
   if (gcalEventId && gcalEventId !== prevGcalEventId) {
@@ -3421,7 +3545,7 @@ document.getElementById('appuntamento-save').addEventListener('click', async () 
   const attrs = {
     tipo: val('ap-tipo') || 'incontro', data, ora: val('ap-ora'), oraFine: val('ap-ora-fine'),
     modalita: val('ap-modalita') || 'presenza', classe: val('ap-classe'), oggetto: val('ap-oggetto'),
-    note: val('ap-note'), meetLink: val('ap-meet'),
+    note: getRichValue('ap-note'), meetLink: val('ap-meet'),
   };
   const anno = annoFromData(data);
   try {
@@ -6226,26 +6350,56 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 // ── Stato Google Calendar in header: l'access token OAuth (scope
 //    calendar.events, catturato al login) dura circa un'ora — quando manca
 //    o è scaduto il pulsante permette di riconnettersi senza rifare
-//    l'accesso completo, tramite reauthenticateWithPopup ──
+//    l'accesso completo, tramite reauthenticateWithPopup. Lo stato mostrato
+//    riflette una verifica reale (GCal.verify, una chiamata di prova
+//    all'API), non solo "il token è presente": così l'icona non dice
+//    "connesso" mentre la sync fallisce in silenzio a ogni salvataggio.
 function updateGCalStatus(connected) {
   const btn = document.getElementById('gcal-status');
+  const label = document.getElementById('gcal-status-label');
   btn.classList.toggle('connected', connected);
+  label.textContent = connected ? 'Calendar connesso' : 'Calendar non connesso';
   btn.title = connected
     ? 'Google Calendar: connesso (colloqui/appuntamenti sincronizzati)'
     : 'Google Calendar: non connesso — clicca per collegare';
 }
 GCal.onStatusChange(updateGCalStatus);
+function gcalErrorMessage(check) {
+  if (check.reason === 'forbidden') {
+    return 'Permesso ottenuto, ma Google ha rifiutato la richiesta verso Calendar.\n\n'
+      + 'Causa più probabile: la "Google Calendar API" non è abilitata nel progetto Google Cloud collegato a questo account Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Libreria", cerca "Google Calendar API" e abilitala per il progetto, poi riprova a collegare.';
+  }
+  if (check.reason === 'no-token') return 'Non è stato ottenuto alcun permesso di accesso a Google Calendar. Riprova.';
+  if (check.reason === 'unauthorized') return 'Il permesso è scaduto o non valido. Riprova a collegare.';
+  if (check.reason === 'network') return 'Google Calendar non è raggiungibile in questo momento (rete). Riprova più tardi.';
+  return `Google Calendar non risponde correttamente (${check.reason}). Riprova più tardi.`;
+}
 document.getElementById('gcal-status').addEventListener('click', async () => {
   const user = firebase.auth().currentUser;
   if (!user) return;
+  const btn = document.getElementById('gcal-status');
+  btn.disabled = true;
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.events');
     const result = await user.reauthenticateWithPopup(provider);
     const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
     GCal.setToken(credential?.accessToken || '');
+    const check = await GCal.verify();
+    if (check.ok) {
+      alert('Google Calendar collegato: colloqui e appuntamenti verranno sincronizzati automaticamente.');
+    } else {
+      // Il token resta valido su un rifiuto "forbidden" (es. API non ancora
+      // abilitata lato Google Cloud): può iniziare a funzionare senza un
+      // nuovo consenso, appena risolto lato Google — non lo scarta qui.
+      if (check.reason !== 'forbidden') GCal.setToken('');
+      updateGCalStatus(false);
+      alert(gcalErrorMessage(check));
+    }
   } catch (e) {
-    if (e.code !== 'auth/popup-closed-by-user') alert('Impossibile collegare Google Calendar. Riprova.');
+    if (e.code !== 'auth/popup-closed-by-user') alert('Impossibile collegare Google Calendar: ' + (e.message || e.code || 'errore sconosciuto'));
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -6255,5 +6409,9 @@ smAuthReady.then(user => {
   if (user.photoURL) { av.src = user.photoURL; av.classList.remove('hidden'); }
   av.title = user.email;
   updateGCalStatus(GCal.hasToken());
+  // Il token può essere sopravvissuto in sessionStorage da prima ma essere nel
+  // frattempo scaduto/revocato: verifica in background e corregge l'icona se
+  // non funziona davvero, invece di lasciarla "connesso" a torto.
+  if (GCal.hasToken()) GCal.verify().then(check => { if (!check.ok && check.reason !== 'network') updateGCalStatus(false); });
   load().catch(err => alert('Errore caricamento dati: ' + err.message));
 });

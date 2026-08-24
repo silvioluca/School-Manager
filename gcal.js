@@ -79,5 +79,26 @@ const GCal = (() => {
     await _call('/' + gcalEventId, { method: 'DELETE' });
   }
 
-  return { getToken, setToken, hasToken, onStatusChange, upsertEvent, deleteEvent };
+  // Verifica reale (non solo "il token è presente"): prova a leggere il
+  // calendario "primary". Usata dopo il login/riconnessione per dare un
+  // riscontro immediato e concreto invece di un'icona che dice "connesso"
+  // anche quando la sync in realtà fallisce sempre in silenzio (es. Calendar
+  // API non abilitata nel progetto Google Cloud collegato a Firebase: la
+  // causa più comune quando "non sembra collegato" nonostante il login).
+  async function verify() {
+    const token = getToken();
+    if (!token) return { ok: false, reason: 'no-token' };
+    let res;
+    try {
+      res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary', {
+        headers: { Authorization: 'Bearer ' + token },
+      });
+    } catch { return { ok: false, reason: 'network' }; }
+    if (res.status === 401) { setToken(''); return { ok: false, reason: 'unauthorized' }; }
+    if (res.status === 403) return { ok: false, reason: 'forbidden', detail: await res.text().catch(() => '') };
+    if (!res.ok) return { ok: false, reason: 'http-' + res.status, detail: await res.text().catch(() => '') };
+    return { ok: true };
+  }
+
+  return { getToken, setToken, hasToken, onStatusChange, upsertEvent, deleteEvent, verify };
 })();
