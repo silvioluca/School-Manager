@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="firebase-init.js"></script>
+<script src="gcal.js"></script>
 <style>
   :root {
     --bg1: #0f0f0f;
@@ -128,8 +129,15 @@
     btn.disabled = true;
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
-      const { user } = await firebase.auth().signInWithPopup(provider);
+      // Permesso per sincronizzare Colloqui e Appuntamenti su Google Calendar
+      // (vedi gcal.js): richiesto già al login, così l'access token è pronto
+      // dal primo avvio invece di dover riconnettere separatamente dall'app.
+      provider.addScope('https://www.googleapis.com/auth/calendar.events');
+      const result = await firebase.auth().signInWithPopup(provider);
+      const { user } = result;
       if (smIsAllowed(user)) {
+        const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+        GCal.setToken(credential?.accessToken || '');
         window.location.replace('app.html');
       } else {
         showError(`Account non autorizzato: ${user.email}`);

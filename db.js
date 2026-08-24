@@ -32,11 +32,22 @@
 //                                        punteggio minimo/massimo/step propri (alcuni indicatori non
 //                                        possono scendere a 0: min riflette quel vincolo) e una serie
 //                                        di livelli con descrittore testuale, a scopo di riferimento.
-//   users/{uid}/packs/coll-2025_26   → { json: [ {id, data, ora, studenteId, partecipanti, note}, … ] }
+//   users/{uid}/packs/coll-2025_26   → { json: [ {id, data, ora, studenteId, partecipanti, note,
+//                                        meetLink, gcalEventId}, … ] }
 //                                        colloqui/ricevimento genitori (per anno scolastico): un incontro
 //                                        specifico su un alunno. L'orario ricorrente di ricevimento
 //                                        (giorno/ora fisso) vive invece dentro l'orario del docente
 //                                        (slot con materia "Colloqui", classe vuota).
+//   users/{uid}/packs/appt-2025_26   → { json: [ {id, tipo, data, ora, oraFine, modalita, classe,
+//                                        oggetto, note, meetLink, gcalEventId}, … ] }
+//                                        appuntamenti istituzionali (per anno scolastico): collegi
+//                                        docenti, consigli di classe, incontri anche pomeridiani/online.
+//                                        tipo: 'collegio' | 'consiglio' | 'incontro'; modalita: 'presenza'
+//                                        | 'online' (vedi TIPI_APPUNTAMENTO in app.js).
+//                                        meetLink/gcalEventId (su entrambi coll-/appt-): link Meet
+//                                        inserito a mano e id dell'evento gemello creato su Google
+//                                        Calendar dalla sincronizzazione automatica (vedi gcal.js) —
+//                                        '' finché non sincronizzato o senza link.
 //   users/{uid}/packs/todos          → { json: [ {id, titolo, descrizione, stato, scadenza}, … ] }
 //                                        to-do del docente, elenco globale (non legato all'anno
 //                                        scolastico): stato è 'da_fare' | 'in_corso' | 'fatto'
@@ -76,6 +87,7 @@ const DB = (() => {
   let _lezioni = {};    // anno → [ {id, data, ora, classe, materia, argomento, note}, … ] — registro lezioni
   let _rubriche = [];   // [ {id, nome, indicatori: [...]}, … ] — libreria griglie di valutazione
   let _colloqui = {};   // anno → [ {id, data, ora, studenteId, partecipanti, note}, … ] — colloqui genitori
+  let _appuntamenti = {}; // anno → [ {id, tipo, data, ora, oraFine, modalita, classe, oggetto, note}, … ] — collegi/consigli/incontri
   let _todos = [];      // [ {id, titolo, descrizione, stato, scadenza}, … ] — to-do, globale (non per anno)
 
   function _db() { return firebase.firestore(); }
@@ -94,6 +106,8 @@ const DB = (() => {
   function lezAnnoFromDocId(id) { return id.slice(4).replace(/_/g, '/'); }
   function colDocId(anno) { return 'coll-' + String(anno).replace(/\//g, '_'); }
   function colAnnoFromDocId(id) { return id.slice(5).replace(/_/g, '/'); }
+  function apptDocId(anno) { return 'appt-' + String(anno).replace(/\//g, '_'); }
+  function apptAnnoFromDocId(id) { return id.slice(5).replace(/_/g, '/'); }
 
   // Anno scolastico corrente: settembre–agosto (es. a luglio 2026 → "2025/26")
   function currentAnno() {
@@ -145,12 +159,13 @@ const DB = (() => {
       _lezioni = p.lezioni || {};
       _rubriche = p.rubriche || [];
       _colloqui = p.colloqui || {};
+      _appuntamenti = p.appuntamenti || {};
       _todos = p.todos || [];
       return true;
     } catch { return false; }
   }
   function _cacheSave() {
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, todos: _todos })); } catch {}
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos })); } catch {}
   }
   function _cacheDrop() {
     try { sessionStorage.removeItem(CACHE_KEY); } catch {}
@@ -292,6 +307,11 @@ const DB = (() => {
     _colloqui = {};
     snap.docs.filter(d => d.id.startsWith('coll-')).forEach(d => {
       _colloqui[colAnnoFromDocId(d.id)] = JSON.parse(d.data().json);
+    });
+
+    _appuntamenti = {};
+    snap.docs.filter(d => d.id.startsWith('appt-')).forEach(d => {
+      _appuntamenti[apptAnnoFromDocId(d.id)] = JSON.parse(d.data().json);
     });
 
     const todosDoc = snap.docs.find(d => d.id === 'todos');
@@ -510,14 +530,19 @@ const DB = (() => {
   function _newColloquio(c) {
     return {
       id: uid(), data: c.data || '', ora: c.ora || '', studenteId: c.studenteId || '',
-      partecipanti: c.partecipanti || '', note: c.note || '',
+      partecipanti: c.partecipanti || '', note: c.note || '', meetLink: c.meetLink || '',
+      // id dell'evento gemello su Google Calendar (sincronizzazione automatica,
+      // vedi gcal.js): '' finché non è mai stato sincronizzato con successo
+      gcalEventId: c.gcalEventId || '',
     };
   }
   async function addColloquio(anno, c) {
     if (!_cache) await all();
-    (_colloqui[anno] ||= []).push(_newColloquio(c));
+    const rec = _newColloquio(c);
+    (_colloqui[anno] ||= []).push(rec);
     await _saveColloqui(anno);
     _cacheDrop();
+    return rec;
   }
   async function updateColloquio(anno, id, attrs) {
     if (!_cache) await all();
@@ -544,6 +569,49 @@ const DB = (() => {
       anni.add(anno);
     });
     for (const anno of anni) await _saveColloqui(anno);
+    _cacheDrop();
+  }
+
+  // ── Appuntamenti: collegi, consigli di classe, incontri (per anno) ──
+  function getAppuntamenti(anno) { return _appuntamenti[anno] || []; }
+  function getAppuntamentiAnni() { return Object.keys(_appuntamenti); }
+  async function _saveAppuntamenti(anno) {
+    const arr = _appuntamenti[anno] || [];
+    const ref = packs().doc(apptDocId(anno));
+    if (!arr.length) { await ref.delete(); return; }
+    await ref.set({ json: JSON.stringify(arr) });
+  }
+  function _newAppuntamento(a) {
+    return {
+      id: uid(), tipo: a.tipo || 'incontro', data: a.data || '', ora: a.ora || '',
+      oraFine: a.oraFine || '', modalita: a.modalita || 'presenza', classe: a.classe || '',
+      oggetto: a.oggetto || '', note: a.note || '', meetLink: a.meetLink || '',
+      // id dell'evento gemello su Google Calendar (sincronizzazione automatica,
+      // vedi gcal.js): '' finché non è mai stato sincronizzato con successo
+      gcalEventId: a.gcalEventId || '',
+    };
+  }
+  async function addAppuntamento(anno, a) {
+    if (!_cache) await all();
+    const rec = _newAppuntamento(a);
+    (_appuntamenti[anno] ||= []).push(rec);
+    await _saveAppuntamenti(anno);
+    _cacheDrop();
+    return rec;
+  }
+  async function updateAppuntamento(anno, id, attrs) {
+    if (!_cache) await all();
+    const arr = _appuntamenti[anno] || [];
+    const idx = arr.findIndex(a => a.id === id);
+    if (idx < 0) return;
+    Object.assign(arr[idx], attrs);
+    await _saveAppuntamenti(anno);
+    _cacheDrop();
+  }
+  async function removeAppuntamento(anno, id) {
+    if (!_cache) await all();
+    _appuntamenti[anno] = (_appuntamenti[anno] || []).filter(a => a.id !== id);
+    await _saveAppuntamenti(anno);
     _cacheDrop();
   }
 
@@ -723,7 +791,7 @@ const DB = (() => {
     const data = await all();
     return JSON.stringify({
       app: APP, exportedAt: new Date().toISOString(),
-      students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, todos: _todos,
+      students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos,
     }, null, 2);
   }
 
@@ -761,6 +829,12 @@ const DB = (() => {
         await _saveColloqui(anno);
       }
     }
+    if (!Array.isArray(parsed) && parsed.appuntamenti) {
+      for (const [anno, arr] of Object.entries(parsed.appuntamenti)) {
+        _appuntamenti[anno] = arr;
+        await _saveAppuntamenti(anno);
+      }
+    }
     if (!Array.isArray(parsed) && parsed.todos) {
       _todos = parsed.todos;
       await packs().doc('todos').set({ json: JSON.stringify(_todos) });
@@ -780,6 +854,7 @@ const DB = (() => {
     removeLezioniBulk, clearCompitiBulk,
     getRubriche, saveRubriche,
     getColloqui, getColloquiAnni, addColloquio, updateColloquio, removeColloquio, addColloquiBulk,
+    getAppuntamenti, getAppuntamentiAnni, addAppuntamento, updateAppuntamento, removeAppuntamento,
     getTodos, saveTodos,
     exportJSON, importJSON,
   };

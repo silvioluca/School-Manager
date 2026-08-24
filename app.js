@@ -16,6 +16,7 @@ const state = {
   compitiSelected: new Set(), // chiavi "anno|id" selezionate nella sezione compiti
   besSelected: new Set(),  // id alunno selezionati nell'elenco BES
   colloquiSelected: new Set(), // chiavi "anno|id" selezionate nell'elenco colloqui
+  appuntamentiSelected: new Set(), // chiavi "anno|id" selezionate nell'elenco appuntamenti
   rubricheSelected: new Set(), // id rubrica selezionati nell'elenco rubriche
   todoSelected: new Set(), // id to-do selezionati nell'elenco
   reportMateria: 'all',    // filtro materia nella sezione Report
@@ -29,6 +30,9 @@ const state = {
   besView: 'schede',       // 'schede' | 'elenco'
   rubricheView: 'schede',  // 'schede' | 'elenco'
   todoView: 'kanban',      // 'kanban' | 'elenco'
+  calView: 'settimana',    // 'settimana' | 'mese' | 'agenda' — vista attiva nella sezione Calendario
+  calRefDate: null,        // data di riferimento (YYYY-MM-DD) per Calendario, indipendente da lezRefDate
+  calFilters: { colloqui: true, appuntamenti: true }, // tipi visibili in Calendario (mai le lezioni: hanno la propria vista)
   lezRefDate: null,        // data di riferimento (YYYY-MM-DD) per le viste settimana/calendario
   raggruppa: {             // "Raggruppa" per vista: booleano (solo classe) ovunque
     voti: false, alunni: false, bes: false, compiti: false, colloqui: false,
@@ -50,12 +54,14 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'report', 'alunno-detail', 'classe-detail'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'alunno-detail', 'classe-detail'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative',
-  bes: 'BES', colloqui: 'Colloqui', todo: 'To-do',
+  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do',
 };
+// Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
+const TIPI_APPUNTAMENTO = { collegio: 'Collegio docenti', consiglio: 'Consiglio di classe', incontro: 'Incontro' };
 // Stati del kanban To-do, nell'ordine in cui compaiono le colonne
 const TODO_STATI = [
   { key: 'da_fare', label: 'Da fare' },
@@ -155,6 +161,14 @@ function setView(v) {
   state.view = v;
   document.querySelectorAll('[data-view]').forEach(b =>
     b.classList.toggle('active', b.dataset.view === v));
+  // Espande automaticamente il gruppo sidebar che contiene la view appena
+  // attivata (anche da navigazione programmatica, es. "torna a Classi"),
+  // senza richiudere gli altri gruppi eventualmente aperti dall'utente.
+  document.querySelectorAll('.subject-group').forEach(g => {
+    const hasActive = !!g.querySelector(`[data-view="${v}"]`);
+    if (hasActive) g.classList.add('open');
+    g.classList.toggle('has-active', hasActive);
+  });
   // su tablet/mobile la sidebar è in overlay: chiudila dopo la scelta
   if (window.innerWidth <= 1024) document.body.classList.remove('sidebar-open');
   renderView();
@@ -170,6 +184,8 @@ document.querySelectorAll('[data-view]').forEach(btn =>
     }
     setView(btn.dataset.view);
   }));
+document.querySelectorAll('.subject-group-toggle').forEach(btn =>
+  btn.addEventListener('click', () => btn.closest('.subject-group').classList.toggle('open')));
 
 // ── Helper voti / colori ────────────────────────────────────────────
 function avg(nums) {
@@ -624,7 +640,7 @@ function renderView() {
   document.getElementById('search-wrap').classList.toggle('hidden',
     state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
-    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'todo');
+    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo');
   document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report');
   document.getElementById('filter-alunno-report').classList.toggle('hidden', state.view !== 'report');
   // Periodo Da/A: filtro condiviso da Voti, Lezioni, Compiti e Report
@@ -638,7 +654,7 @@ function renderView() {
   const renderers = {
     dashboard: renderDashboard, alunni: renderAlunni, classi: renderClassi, voti: renderVoti, report: renderReport,
     lezioni: renderLezioni, compiti: renderCompiti, orario: renderOrario, verifiche: renderVerifiche, rubriche: renderRubriche,
-    bes: renderBes, colloqui: renderColloqui, todo: renderTodo,
+    bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage,
   };
   try {
@@ -3048,6 +3064,9 @@ function renderColloqui() {
             <td>${escHtml(c.partecipanti || '—')}</td>
             <td class="stat-sub" title="${escHtml(note)}">${escHtml(note.length > 40 ? note.slice(0, 40) + '…' : note)}</td>
             <td class="vt-actions">
+              ${c.meetLink ? `<a class="grade-edit" href="${escHtml(c.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l5-3v10l-5-3"/><rect x="1" y="6" width="14" height="12" rx="2"/></svg>
+              </a>` : ''}
               <button class="grade-edit" data-anno="${escHtml(anno)}" data-id="${c.id}" title="Modifica">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
@@ -3092,8 +3111,12 @@ function renderColloqui() {
   activeContainer.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Eliminare questo colloquio?')) return;
-    try { await DB.removeColloquio(btn.dataset.anno, btn.dataset.id); renderAll(); }
-    catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+    try {
+      const prevGcalEventId = DB.getColloqui(btn.dataset.anno).find(x => x.id === btn.dataset.id)?.gcalEventId;
+      await DB.removeColloquio(btn.dataset.anno, btn.dataset.id);
+      renderAll();
+      if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
+    } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
   }));
   activeContainer.querySelectorAll('tr[data-key]').forEach(row => row.addEventListener('click', e => {
     if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm')) return;
@@ -3119,9 +3142,11 @@ document.getElementById('btn-colloqui-elimina-bulk').addEventListener('click', a
   if (!keys.length) return;
   if (!confirm(`Eliminare ${keys.length} colloqui${keys.length === 1 ? 'o' : ''}? L'azione è irreversibile.`)) return;
   try {
+    const gcalIds = keys.map(([anno, id]) => DB.getColloqui(anno).find(x => x.id === id)?.gcalEventId).filter(Boolean);
     for (const [anno, id] of keys) await DB.removeColloquio(anno, id);
     state.colloquiSelected.clear();
     renderAll();
+    gcalIds.forEach(gid => GCal.deleteEvent(gid));
   } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
 });
 document.getElementById('btn-colloqui-select-all').addEventListener('click', () => {
@@ -3146,6 +3171,7 @@ function colloquioFormBody(c) {
       </select>
     </label>
     <label class="vf-label">Partecipanti<input class="vf-input" id="cl-partecipanti" placeholder="es. Madre, Padre" value="${escHtml(c.partecipanti || '')}"/></label>
+    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="cl-meet" placeholder="https://meet.google.com/…" value="${escHtml(c.meetLink || '')}"/></label>
     <label class="vf-label">Note<textarea class="vf-input" id="cl-note">${escHtml(c.note || '')}</textarea></label>`;
 }
 let colloquioCtx = null;
@@ -3169,34 +3195,263 @@ function closeColloquio() { document.getElementById('colloquio-overlay').classLi
 document.getElementById('colloquio-close').addEventListener('click', closeColloquio);
 document.getElementById('colloquio-cancel').addEventListener('click', closeColloquio);
 document.getElementById('colloquio-overlay').addEventListener('click', e => { if (e.target.id === 'colloquio-overlay') closeColloquio(); });
+// Sincronizza (in background, senza bloccare né condizionare il salvataggio
+// locale già avvenuto) un colloquio con Google Calendar: crea/aggiorna
+// l'evento gemello e, se cambia l'id, lo riporta sul record Firestore.
+async function syncColloquioToGCal(anno, id, attrs, prevGcalEventId) {
+  if (!GCal.hasToken()) return;
+  const s = state.students.find(x => x.id === attrs.studenteId);
+  const gcalEventId = await GCal.upsertEvent({
+    gcalEventId: prevGcalEventId,
+    title: 'Colloquio' + (s ? ' · ' + s.cognome + ' ' + s.nome : ''),
+    dateISO: attrs.data, startTime: attrs.ora,
+    description: [attrs.partecipanti && `Partecipanti: ${attrs.partecipanti}`, attrs.note].filter(Boolean).join('\n'),
+    location: attrs.meetLink,
+  });
+  if (gcalEventId && gcalEventId !== prevGcalEventId) {
+    await DB.updateColloquio(anno, id, { gcalEventId });
+    if (state.view === 'colloqui' || state.view === 'calendario') renderView();
+  }
+}
 document.getElementById('colloquio-save').addEventListener('click', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('cl-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
-  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), note: val('cl-note') };
+  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), note: val('cl-note'), meetLink: val('cl-meet') };
   const anno = annoFromData(data);
   try {
+    const prevGcalEventId = colloquioCtx ? (DB.getColloqui(colloquioCtx.anno).find(x => x.id === colloquioCtx.id)?.gcalEventId || '') : '';
+    let targetId;
     if (colloquioCtx) {
       if (anno !== colloquioCtx.anno) {
         await DB.removeColloquio(colloquioCtx.anno, colloquioCtx.id);
-        await DB.addColloquio(anno, attrs);
+        targetId = (await DB.addColloquio(anno, attrs)).id;
       } else {
         await DB.updateColloquio(colloquioCtx.anno, colloquioCtx.id, attrs);
+        targetId = colloquioCtx.id;
       }
     } else {
-      await DB.addColloquio(anno, attrs);
+      targetId = (await DB.addColloquio(anno, attrs)).id;
     }
     closeColloquio();
     renderAll();
+    syncColloquioToGCal(anno, targetId, attrs, prevGcalEventId);
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
 document.getElementById('colloquio-delete').addEventListener('click', async () => {
   if (!colloquioCtx) return;
   if (!confirm('Eliminare questo colloquio?')) return;
   try {
+    const prevGcalEventId = DB.getColloqui(colloquioCtx.anno).find(x => x.id === colloquioCtx.id)?.gcalEventId;
     await DB.removeColloquio(colloquioCtx.anno, colloquioCtx.id);
     closeColloquio();
     renderAll();
+    if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
+  } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+
+// ── Appuntamenti: collegi docenti, consigli di classe, incontri (anche
+//    pomeridiani/online) — sezione a sé, separata dai Colloqui ──────────
+function appuntamentiRows() {
+  const anni = state.year !== 'all' ? [state.year] : [...new Set([...allYears(), ...DB.getAppuntamentiAnni()])];
+  const rows = [];
+  anni.forEach(anno => DB.getAppuntamenti(anno).forEach(a => rows.push({ anno, a })));
+  return rows.sort((x, y) => (x.a.data + (x.a.ora || '')).localeCompare(y.a.data + (y.a.ora || '')));
+}
+function renderAppuntamenti() {
+  const rows = appuntamentiRows();
+  document.getElementById('appuntamenti-count').textContent = `${rows.length} appuntament${rows.length === 1 ? 'o' : 'i'}`;
+  document.getElementById('appuntamenti-empty').classList.toggle('hidden', !!rows.length);
+  const appuntamentoRowHtml = ({ anno, a }) => {
+    const ora = a.oraFine ? `${a.ora || '—'}–${a.oraFine}` : (a.ora || '—');
+    const oggetto = a.oggetto || '';
+    return `<tr class="row-selectable ${state.appuntamentiSelected.has(anno + '|' + a.id) ? 'selected' : ''}" data-anno="${escHtml(anno)}" data-id="${a.id}" data-key="${escHtml(anno + '|' + a.id)}">
+            <td class="row-drag" title="Seleziona"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/><circle cx="16" cy="6" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="16" cy="18" r="1.6"/></svg></td>
+            <td class="vt-mono">${fmtData(a.data)}</td>
+            <td class="vt-mono">${escHtml(ora)}</td>
+            <td>${escHtml(TIPI_APPUNTAMENTO[a.tipo] || a.tipo)}</td>
+            <td>${a.modalita === 'online' ? 'Online' : 'In presenza'}</td>
+            <td>${escHtml(a.classe || '—')}</td>
+            <td class="stat-sub" title="${escHtml(oggetto)}">${escHtml(oggetto.length > 40 ? oggetto.slice(0, 40) + '…' : oggetto)}</td>
+            <td class="vt-actions">
+              ${a.meetLink ? `<a class="grade-edit" href="${escHtml(a.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 10l5-3v10l-5-3"/><rect x="1" y="6" width="14" height="12" rx="2"/></svg>
+              </a>` : ''}
+              <button class="grade-edit" data-anno="${escHtml(anno)}" data-id="${a.id}" title="Modifica">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="grade-rm" data-anno="${escHtml(anno)}" data-id="${a.id}" title="Elimina appuntamento">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </td>
+          </tr>`;
+  };
+  const wrap = document.getElementById('appuntamenti-wrap');
+  const panel = wrap.closest('.table-panel');
+  const thead = `<th></th><th>Data</th><th>Ora</th><th>Tipo</th><th>Modalità</th><th>Classe</th><th>Oggetto</th><th></th>`;
+  const visibleKeys = new Set(rows.map(({ anno, a }) => anno + '|' + a.id));
+  [...state.appuntamentiSelected].forEach(k => { if (!visibleKeys.has(k)) state.appuntamentiSelected.delete(k); });
+  updateAppuntamentiBulkBar();
+  const selAllBtn = document.getElementById('btn-appuntamenti-select-all');
+  const allSel = rows.length > 0 && rows.every(({ anno, a }) => state.appuntamentiSelected.has(anno + '|' + a.id));
+  selAllBtn.classList.toggle('active', allSel);
+  selAllBtn.title = allSel ? 'Deseleziona tutto' : 'Seleziona tutto';
+  if (!rows.length) { wrap.innerHTML = ''; panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  wrap.innerHTML = `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${rows.map(appuntamentoRowHtml).join('')}</tbody></table>`;
+  wrap.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openAppuntamento(btn.dataset.anno, btn.dataset.id); }));
+  wrap.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!confirm('Eliminare questo appuntamento?')) return;
+    try {
+      const prevGcalEventId = DB.getAppuntamenti(btn.dataset.anno).find(x => x.id === btn.dataset.id)?.gcalEventId;
+      await DB.removeAppuntamento(btn.dataset.anno, btn.dataset.id);
+      renderAll();
+      if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
+    } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+  }));
+  wrap.querySelectorAll('tr[data-key]').forEach(row => row.addEventListener('click', e => {
+    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm')) return;
+    const key = row.dataset.key;
+    if (state.appuntamentiSelected.has(key)) state.appuntamentiSelected.delete(key);
+    else state.appuntamentiSelected.add(key);
+    row.classList.toggle('selected');
+    updateAppuntamentiBulkBar();
+    const stillAll = rows.length > 0 && rows.every(({ anno, a }) => state.appuntamentiSelected.has(anno + '|' + a.id));
+    selAllBtn.classList.toggle('active', stillAll);
+    selAllBtn.title = stillAll ? 'Deseleziona tutto' : 'Seleziona tutto';
+  }));
+}
+function updateAppuntamentiBulkBar() {
+  const bar = document.getElementById('appuntamenti-bulk-bar');
+  const n = state.appuntamentiSelected.size;
+  bar.classList.toggle('hidden', n === 0);
+  document.getElementById('appuntamenti-sel-count').textContent = `${n} appuntament${n === 1 ? 'o' : 'i'} selezionat${n === 1 ? 'o' : 'i'}`;
+}
+document.getElementById('btn-appuntamenti-elimina-bulk').addEventListener('click', async () => {
+  const keys = [...state.appuntamentiSelected].map(k => k.split('|'));
+  if (!keys.length) return;
+  if (!confirm(`Eliminare ${keys.length} appuntament${keys.length === 1 ? 'o' : 'i'}? L'azione è irreversibile.`)) return;
+  try {
+    const gcalIds = keys.map(([anno, id]) => DB.getAppuntamenti(anno).find(x => x.id === id)?.gcalEventId).filter(Boolean);
+    for (const [anno, id] of keys) await DB.removeAppuntamento(anno, id);
+    state.appuntamentiSelected.clear();
+    renderAll();
+    gcalIds.forEach(gid => GCal.deleteEvent(gid));
+  } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+document.getElementById('btn-appuntamenti-select-all').addEventListener('click', () => {
+  const keys = appuntamentiRows().map(({ anno, a }) => anno + '|' + a.id);
+  const allSel = keys.length > 0 && keys.every(k => state.appuntamentiSelected.has(k));
+  if (allSel) keys.forEach(k => state.appuntamentiSelected.delete(k));
+  else keys.forEach(k => state.appuntamentiSelected.add(k));
+  renderAppuntamenti();
+});
+
+function appuntamentoFormBody(a) {
+  return `
+    <label class="vf-label">Tipo
+      <select class="vf-input" id="ap-tipo">
+        ${Object.entries(TIPI_APPUNTAMENTO).map(([k, l]) => `<option value="${k}" ${a.tipo === k ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
+      </select>
+    </label>
+    <div class="vf-row">
+      <label class="vf-label">Data<input type="date" class="vf-input" id="ap-data" value="${escHtml(a.data || todayISO())}"/></label>
+      <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="ap-ora" value="${escHtml(a.ora || '')}"/></label>
+      <label class="vf-label">Ora fine<input type="time" class="vf-input" id="ap-ora-fine" value="${escHtml(a.oraFine || '')}"/></label>
+    </div>
+    <div class="vf-row">
+      <label class="vf-label">Modalità
+        <select class="vf-input" id="ap-modalita">
+          <option value="presenza" ${a.modalita !== 'online' ? 'selected' : ''}>In presenza</option>
+          <option value="online" ${a.modalita === 'online' ? 'selected' : ''}>Online</option>
+        </select>
+      </label>
+      <label class="vf-label">Classe (facoltativa)
+        <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
+        <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
+      </label>
+    </div>
+    <label class="vf-label">Oggetto<input class="vf-input" id="ap-oggetto" placeholder="es. Scrutini primo quadrimestre" value="${escHtml(a.oggetto || '')}"/></label>
+    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>
+    <label class="vf-label">Note<textarea class="vf-input" id="ap-note">${escHtml(a.note || '')}</textarea></label>`;
+}
+let appuntamentoCtx = null;
+function openAppuntamento(anno, id) {
+  const a = DB.getAppuntamenti(anno).find(x => x.id === id);
+  if (!a) return;
+  appuntamentoCtx = { anno, id };
+  document.getElementById('appuntamento-title').textContent = 'Modifica appuntamento';
+  document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody(a);
+  document.getElementById('appuntamento-delete').classList.remove('hidden');
+  document.getElementById('appuntamento-overlay').classList.remove('hidden');
+}
+document.getElementById('btn-add-appuntamento').addEventListener('click', () => {
+  appuntamentoCtx = null;
+  document.getElementById('appuntamento-title').textContent = 'Nuovo appuntamento';
+  document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody({ data: todayISO(), tipo: 'incontro', modalita: 'presenza' });
+  document.getElementById('appuntamento-delete').classList.add('hidden');
+  document.getElementById('appuntamento-overlay').classList.remove('hidden');
+});
+function closeAppuntamento() { document.getElementById('appuntamento-overlay').classList.add('hidden'); appuntamentoCtx = null; }
+document.getElementById('appuntamento-close').addEventListener('click', closeAppuntamento);
+document.getElementById('appuntamento-cancel').addEventListener('click', closeAppuntamento);
+document.getElementById('appuntamento-overlay').addEventListener('click', e => { if (e.target.id === 'appuntamento-overlay') closeAppuntamento(); });
+// Sincronizza (in background, senza bloccare né condizionare il salvataggio
+// locale già avvenuto) un appuntamento con Google Calendar: crea/aggiorna
+// l'evento gemello e, se cambia l'id, lo riporta sul record Firestore.
+async function syncAppuntamentoToGCal(anno, id, attrs, prevGcalEventId) {
+  if (!GCal.hasToken()) return;
+  const gcalEventId = await GCal.upsertEvent({
+    gcalEventId: prevGcalEventId,
+    title: (TIPI_APPUNTAMENTO[attrs.tipo] || attrs.tipo) + (attrs.oggetto ? ' · ' + attrs.oggetto : ''),
+    dateISO: attrs.data, startTime: attrs.ora, endTime: attrs.oraFine,
+    description: [attrs.classe && `Classe: ${attrs.classe}`, attrs.modalita === 'online' ? 'Online' : 'In presenza', attrs.note].filter(Boolean).join('\n'),
+    location: attrs.meetLink,
+  });
+  if (gcalEventId && gcalEventId !== prevGcalEventId) {
+    await DB.updateAppuntamento(anno, id, { gcalEventId });
+    if (state.view === 'appuntamenti' || state.view === 'calendario') renderView();
+  }
+}
+document.getElementById('appuntamento-save').addEventListener('click', async () => {
+  const val = id => document.getElementById(id)?.value.trim() ?? '';
+  const data = val('ap-data');
+  if (!data) { alert('La data è obbligatoria.'); return; }
+  const attrs = {
+    tipo: val('ap-tipo') || 'incontro', data, ora: val('ap-ora'), oraFine: val('ap-ora-fine'),
+    modalita: val('ap-modalita') || 'presenza', classe: val('ap-classe'), oggetto: val('ap-oggetto'),
+    note: val('ap-note'), meetLink: val('ap-meet'),
+  };
+  const anno = annoFromData(data);
+  try {
+    const prevGcalEventId = appuntamentoCtx ? (DB.getAppuntamenti(appuntamentoCtx.anno).find(x => x.id === appuntamentoCtx.id)?.gcalEventId || '') : '';
+    let targetId;
+    if (appuntamentoCtx) {
+      if (anno !== appuntamentoCtx.anno) {
+        await DB.removeAppuntamento(appuntamentoCtx.anno, appuntamentoCtx.id);
+        targetId = (await DB.addAppuntamento(anno, attrs)).id;
+      } else {
+        await DB.updateAppuntamento(appuntamentoCtx.anno, appuntamentoCtx.id, attrs);
+        targetId = appuntamentoCtx.id;
+      }
+    } else {
+      targetId = (await DB.addAppuntamento(anno, attrs)).id;
+    }
+    closeAppuntamento();
+    renderAll();
+    syncAppuntamentoToGCal(anno, targetId, attrs, prevGcalEventId);
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+});
+document.getElementById('appuntamento-delete').addEventListener('click', async () => {
+  if (!appuntamentoCtx) return;
+  if (!confirm('Eliminare questo appuntamento?')) return;
+  try {
+    const prevGcalEventId = DB.getAppuntamenti(appuntamentoCtx.anno).find(x => x.id === appuntamentoCtx.id)?.gcalEventId;
+    await DB.removeAppuntamento(appuntamentoCtx.anno, appuntamentoCtx.id);
+    closeAppuntamento();
+    renderAll();
+    if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
   } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
 });
 
@@ -3408,6 +3663,14 @@ function renderLezioniSettimana() {
   lezioniRows().forEach(({ anno: a, l }) => { (byDate[l.data] ||= []).push({ anno: a, l }); });
   const today = todayISO();
 
+  // Appuntamenti (collegi/consigli di classe/incontri) della settimana mostrata:
+  // non legati a un'ora di lezione, compaiono in una riga extra sopra la
+  // griglia a periodi invece che in una cella (vedi sezione "Appuntamenti")
+  const apptByDate = {};
+  const daysSet = new Set(days.map(toISO));
+  appuntamentiRows().forEach(({ anno, a: appt }) => { if (daysSet.has(appt.data)) (apptByDate[appt.data] ||= []).push({ anno, appt }); });
+  const hasAppt = Object.keys(apptByDate).length > 0;
+
   // Griglia CSS (non <table>): con table-layout anche "fixed" un contenuto
   // interno senza vincoli (testo lungo di classe/materia) può comunque forzare
   // una colonna più larga delle altre — con minmax(0,1fr) sulle colonne-giorno
@@ -3419,6 +3682,12 @@ function renderLezioniSettimana() {
       const iso = toISO(d);
       return `<div class="week-grid-head ${iso === today ? 'week-today-head' : ''}">${DOW_LABELS[(d.getDay() + 6) % 7]} ${d.getDate()}</div>`;
     }).join('')}
+    ${hasAppt ? `<div class="week-extra-label">Appunt.</div>${days.map(d => {
+      const iso = toISO(d);
+      const items = apptByDate[iso] || [];
+      return `<div class="week-extra-cell">${items.map(({ anno: a, appt }) => `
+          <div class="week-appt-chip" data-anno="${escHtml(a)}" data-id="${appt.id}" title="${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}${appt.oggetto ? ' · ' + escHtml(appt.oggetto) : ''}">${appt.ora ? escHtml(appt.ora) + ' · ' : ''}${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}</div>`).join('')}</div>`;
+    }).join('')}` : ''}
     ${[...Array(ORE_MAX)].map((_, i) => {
       const ora = i + 1;
       const last = i === ORE_MAX - 1;
@@ -3445,6 +3714,8 @@ function renderLezioniSettimana() {
     c.addEventListener('click', () => openLezione(c.dataset.anno, c.dataset.id)));
   document.querySelectorAll('#lez-week-wrap .week-add').forEach(b =>
     b.addEventListener('click', () => openLezioneNew(b.dataset.date, b.dataset.ora)));
+  document.querySelectorAll('#lez-week-wrap .week-appt-chip').forEach(c =>
+    c.addEventListener('click', () => openAppuntamento(c.dataset.anno, c.dataset.id)));
   renderWeekNowLine();
 }
 // Linea rossa dell'ora corrente nella vista Settimana: usa le fasce orarie
@@ -3500,7 +3771,10 @@ function renderLezioniCalendario() {
   document.getElementById('lez-month-label').textContent = label.charAt(0).toUpperCase() + label.slice(1);
 
   const lezByDay = {};
-  lezioniRows().forEach(({ l }) => { (lezByDay[l.data] ||= []).push(l); });
+  lezioniRows().forEach(({ l }) => { (lezByDay[l.data] ||= []).push({ tipo: 'lezione', l }); });
+  // Appuntamenti (collegi/consigli di classe/incontri): stesse celle delle
+  // lezioni, distinti per colore (vedi sezione "Appuntamenti")
+  appuntamentiRows().forEach(({ a }) => { (lezByDay[a.data] ||= []).push({ tipo: 'appuntamento', a }); });
 
   // Stessi giorni "attivi" di Orario/Settimana: mai la domenica, niente
   // sabato se disattivato nelle impostazioni orario per quell'anno
@@ -3516,15 +3790,18 @@ function renderLezioniCalendario() {
   const today = todayISO();
   const CAL_MAX_SHOWN = 5;
 
+  const itemChipHtml = item => item.tipo === 'lezione'
+    ? `<div class="cal-lesson" style="--cls-color:${colorOfClasse(item.l.classe)}" title="${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · '))}">${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · ') || '—')}</div>`
+    : `<div class="cal-lesson" style="--cls-color:var(--accent-amber)" title="${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}${item.a.oggetto ? ' · ' + escHtml(item.a.oggetto) : ''}">${item.a.ora ? escHtml(item.a.ora) + ' · ' : ''}${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}</div>`;
   const dayCellHtml = d => {
     const iso = toISO(d);
-    const dayLessons = lezByDay[iso] || [];
-    const shown = dayLessons.slice(0, CAL_MAX_SHOWN);
-    const extra = dayLessons.length - shown.length;
+    const dayItems = lezByDay[iso] || [];
+    const shown = dayItems.slice(0, CAL_MAX_SHOWN);
+    const extra = dayItems.length - shown.length;
     return `<div class="cal-day ${d.getMonth() !== month ? 'outside' : ''} ${iso === today ? 'today' : ''}" data-date="${iso}">
         <span class="cd-num">${d.getDate()}</span>
         <div class="cal-day-lessons">
-          ${shown.map(l => `<div class="cal-lesson" style="--cls-color:${colorOfClasse(l.classe)}" title="${escHtml([l.classe, l.materia, l.argomento].filter(Boolean).join(' · '))}">${escHtml([l.classe, l.materia, l.argomento].filter(Boolean).join(' · ') || '—')}</div>`).join('')}
+          ${shown.map(itemChipHtml).join('')}
           ${extra > 0 ? `<div class="cal-lesson-more">+${extra} altr${extra === 1 ? 'a' : 'e'}</div>` : ''}
         </div>
       </div>`;
@@ -3572,6 +3849,179 @@ document.getElementById('lez-month-next').addEventListener('click', () => {
 document.getElementById('lez-month-today').addEventListener('click', () => {
   state.lezRefDate = todayISO();
   renderLezioniCalendario();
+});
+
+// ── Calendario: aggrega Colloqui + Appuntamenti (Settimana/Mese/Agenda),
+//    filtrabile per tipo tramite la legenda a chip — MAI le Lezioni, che
+//    hanno una propria vista Settimana/Calendario dedicata ──────────────
+// Elenco normalizzato degli eventi visibili, in base ai filtri di stato.calFilters
+// (indipendente da stato.calRefDate: solo Calendario la usa)
+function calEventsFor(sources) {
+  const rows = [];
+  if (sources.colloqui) colloquiRows().forEach(({ anno, c }) => {
+    const s = state.students.find(x => x.id === c.studenteId);
+    rows.push({
+      tipo: 'colloquio', anno, id: c.id, data: c.data, ora: c.ora || '', sortOra: c.ora || '',
+      label: 'Colloquio' + (s ? ' · ' + s.cognome + ' ' + s.nome : ''),
+      sub: c.partecipanti || '', color: 'var(--accent-blue)',
+    });
+  });
+  if (sources.appuntamenti) appuntamentiRows().forEach(({ anno, a }) => rows.push({
+    tipo: 'appuntamento', anno, id: a.id, data: a.data, ora: a.ora || '', sortOra: a.ora || '',
+    label: TIPI_APPUNTAMENTO[a.tipo] || a.tipo,
+    sub: a.oggetto || '', color: 'var(--accent-amber)',
+  }));
+  return rows.sort((x, y) => (x.data + x.sortOra).localeCompare(y.data + y.sortOra));
+}
+function openCalEvent(ev) {
+  if (ev.tipo === 'colloquio') openColloquio(ev.anno, ev.id);
+  else openAppuntamento(ev.anno, ev.id);
+}
+function renderCalendario() {
+  document.getElementById('cal-settimana-view').classList.toggle('hidden', state.calView !== 'settimana');
+  document.getElementById('cal-mese-view').classList.toggle('hidden', state.calView !== 'mese');
+  document.getElementById('cal-agenda-view').classList.toggle('hidden', state.calView !== 'agenda');
+  document.querySelectorAll('#cal-view-toggle .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.calv === state.calView));
+  document.querySelectorAll('#cal-legend .cal-legend-chip').forEach(b => b.classList.toggle('active', state.calFilters[b.dataset.src]));
+  if (state.calView === 'settimana') renderCalSettimana();
+  else if (state.calView === 'mese') renderCalMese();
+  else renderCalAgenda();
+}
+document.querySelectorAll('#cal-view-toggle .seg-btn').forEach(btn => btn.addEventListener('click', () => {
+  state.calView = btn.dataset.calv;
+  renderCalendario();
+}));
+document.querySelectorAll('#cal-legend .cal-legend-chip').forEach(btn => btn.addEventListener('click', () => {
+  state.calFilters[btn.dataset.src] = !state.calFilters[btn.dataset.src];
+  renderCalendario();
+}));
+
+function renderCalSettimana() {
+  if (!state.calRefDate) state.calRefDate = todayISO();
+  const start = startOfWeek(state.calRefDate);
+  const anno = annoFromData(toISO(start));
+  const numGiorni = giorniAttivi(anno).length;
+  const days = [...Array(numGiorni)].map((_, i) => addDays(start, i));
+  document.getElementById('cal-week-label').textContent =
+    `${days[0].toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} – ${days[days.length - 1].toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+  const daysSet = new Set(days.map(toISO));
+  const byDate = {};
+  calEventsFor(state.calFilters).forEach(ev => { if (daysSet.has(ev.data)) (byDate[ev.data] ||= []).push(ev); });
+  const today = todayISO();
+
+  document.getElementById('cal-week-wrap').innerHTML = `
+    <div class="cal-week-grid" style="--week-cols:${days.length}">
+      ${days.map(d => {
+        const iso = toISO(d);
+        const items = byDate[iso] || [];
+        return `<div class="cal-week-day ${iso === today ? 'today' : ''}">
+          <div class="cal-week-day-head ${iso === today ? 'is-today' : ''}">${DOW_LABELS[(d.getDay() + 6) % 7]} ${d.getDate()}</div>
+          ${items.map(ev => `<div class="cal-week-chip" style="--chip-color:${ev.color}" data-tipo="${ev.tipo}" data-anno="${escHtml(ev.anno)}" data-id="${ev.id}" title="${escHtml([ev.label, ev.sub].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
+          ${!items.length ? '<div class="cal-week-empty">—</div>' : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  document.querySelectorAll('#cal-week-wrap .cal-week-chip').forEach(chip => chip.addEventListener('click', () =>
+    openCalEvent({ tipo: chip.dataset.tipo, anno: chip.dataset.anno, id: chip.dataset.id })));
+}
+
+function renderCalMese() {
+  if (!state.calRefDate) state.calRefDate = todayISO();
+  const ref = new Date(state.calRefDate + 'T00:00:00');
+  const year = ref.getFullYear(), month = ref.getMonth();
+  const label = ref.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+  document.getElementById('cal-month-label').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+  const byDay = {};
+  calEventsFor(state.calFilters).forEach(ev => { (byDay[ev.data] ||= []).push(ev); });
+
+  const anno = annoFromData(state.calRefDate) || DB.currentAnno();
+  const giorni = giorniAttivi(anno);
+  const numCols = giorni.length;
+
+  const first = new Date(year, month, 1);
+  const startOffset = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const gridStart = addDays(first, -startOffset);
+  const totalWeeks = Math.ceil((startOffset + daysInMonth) / 7);
+  const today = todayISO();
+  const CAL_MAX_SHOWN = 5;
+
+  const dayCellHtml = d => {
+    const iso = toISO(d);
+    const dayItems = byDay[iso] || [];
+    const shown = dayItems.slice(0, CAL_MAX_SHOWN);
+    const extra = dayItems.length - shown.length;
+    return `<div class="cal-day ${d.getMonth() !== month ? 'outside' : ''} ${iso === today ? 'today' : ''}" data-date="${iso}">
+        <span class="cd-num">${d.getDate()}</span>
+        <div class="cal-day-lessons">
+          ${shown.map(ev => `<div class="cal-lesson" style="--cls-color:${ev.color}" title="${escHtml([ev.label, ev.sub].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
+          ${extra > 0 ? `<div class="cal-lesson-more">+${extra} altr${extra === 1 ? 'a' : 'e'}</div>` : ''}
+        </div>
+      </div>`;
+  };
+
+  const grid = document.getElementById('cal-calendar-grid');
+  grid.style.setProperty('--cal-cols', numCols);
+  let cellsHtml = '';
+  for (let w = 0; w < totalWeeks; w++) {
+    for (let dow = 0; dow < numCols; dow++) cellsHtml += dayCellHtml(addDays(gridStart, w * 7 + dow));
+  }
+  grid.innerHTML = giorni.map(d => `<div class="cal-dow">${d}</div>`).join('') + cellsHtml;
+
+  grid.querySelectorAll('.cal-day').forEach(cell => cell.addEventListener('click', () => {
+    state.calRefDate = cell.dataset.date;
+    state.calView = 'settimana';
+    renderCalendario();
+  }));
+}
+
+function renderCalAgenda() {
+  const events = calEventsFor(state.calFilters);
+  const list = document.getElementById('cal-agenda-list');
+  if (!events.length) { list.innerHTML = '<p class="stat-sub" style="padding:8px 0">Nessun evento con questi filtri.</p>'; return; }
+  let html = '';
+  let lastData = null;
+  events.forEach(ev => {
+    if (ev.data !== lastData) { html += `<div class="agenda-date-head">${fmtDateIt(ev.data)}</div>`; lastData = ev.data; }
+    html += `<div class="dash-item" data-tipo="${ev.tipo}" data-anno="${escHtml(ev.anno)}" data-id="${ev.id}">
+      <div class="dash-item-top">
+        <span class="mat-chip" style="--mat-color:${ev.color}">${escHtml(ev.ora || '—')}</span>
+        <span class="dash-item-classe">${escHtml(ev.label)}</span>
+      </div>
+      ${ev.sub ? `<div class="dash-item-text">${escHtml(ev.sub)}</div>` : ''}
+    </div>`;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () =>
+    openCalEvent({ tipo: div.dataset.tipo, anno: div.dataset.anno, id: div.dataset.id })));
+}
+
+document.getElementById('cal-week-prev').addEventListener('click', () => {
+  state.calRefDate = toISO(addDays(startOfWeek(state.calRefDate || todayISO()), -7));
+  renderCalSettimana();
+});
+document.getElementById('cal-week-next').addEventListener('click', () => {
+  state.calRefDate = toISO(addDays(startOfWeek(state.calRefDate || todayISO()), 7));
+  renderCalSettimana();
+});
+document.getElementById('cal-week-today').addEventListener('click', () => {
+  state.calRefDate = todayISO();
+  renderCalSettimana();
+});
+document.getElementById('cal-month-prev').addEventListener('click', () => {
+  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() - 1);
+  state.calRefDate = toISO(d); renderCalMese();
+});
+document.getElementById('cal-month-next').addEventListener('click', () => {
+  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() + 1);
+  state.calRefDate = toISO(d); renderCalMese();
+});
+document.getElementById('cal-month-today').addEventListener('click', () => {
+  state.calRefDate = todayISO();
+  renderCalMese();
 });
 
 // ── Modale lezione (nuova/modifica) ──────────────────────────────────
@@ -5773,10 +6223,37 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
   window.location.replace('login.html');
 });
 
+// ── Stato Google Calendar in header: l'access token OAuth (scope
+//    calendar.events, catturato al login) dura circa un'ora — quando manca
+//    o è scaduto il pulsante permette di riconnettersi senza rifare
+//    l'accesso completo, tramite reauthenticateWithPopup ──
+function updateGCalStatus(connected) {
+  const btn = document.getElementById('gcal-status');
+  btn.classList.toggle('connected', connected);
+  btn.title = connected
+    ? 'Google Calendar: connesso (colloqui/appuntamenti sincronizzati)'
+    : 'Google Calendar: non connesso — clicca per collegare';
+}
+GCal.onStatusChange(updateGCalStatus);
+document.getElementById('gcal-status').addEventListener('click', async () => {
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.addScope('https://www.googleapis.com/auth/calendar.events');
+    const result = await user.reauthenticateWithPopup(provider);
+    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+    GCal.setToken(credential?.accessToken || '');
+  } catch (e) {
+    if (e.code !== 'auth/popup-closed-by-user') alert('Impossibile collegare Google Calendar. Riprova.');
+  }
+});
+
 smAuthReady.then(user => {
   if (!smIsAllowed(user)) { window.location.replace('login.html'); return; }
   const av = document.getElementById('user-avatar');
   if (user.photoURL) { av.src = user.photoURL; av.classList.remove('hidden'); }
   av.title = user.email;
+  updateGCalStatus(GCal.hasToken());
   load().catch(err => alert('Errore caricamento dati: ' + err.message));
 });

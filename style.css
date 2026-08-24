@@ -191,6 +191,33 @@ header {
 .subject-btn-sub:hover { border-left-color: var(--accent-blue); }
 .subject-btn-sub.active { border-left-color: var(--accent-blue); }
 
+/* ── Gruppi ad accordion in sidebar (Alunni/Classi/Voti/Gestione oraria):
+   l'intestazione ha solo la freccina (nessuna view propria), il click apre/
+   chiude i figli sottostanti (.subject-btn-sub) ── */
+.subject-group-toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px; font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: left;
+}
+.subject-group-toggle:hover { background: var(--bg3); color: var(--text-primary); }
+.subject-group-label { flex: 1; }
+.subject-group-toggle .chevron { flex-shrink: 0; transition: transform var(--transition); }
+.subject-group.open .subject-group-toggle .chevron { transform: rotate(90deg); }
+.subject-group.has-active .subject-group-toggle { color: var(--text-primary); font-weight: 600; }
+.subject-group-children {
+  display: none; flex-direction: column; gap: 2px;
+  margin-top: 2px;
+}
+.subject-group.open .subject-group-children { display: flex; }
+
 .sidebar-footer {
   margin-top: auto;
   padding: 16px;
@@ -538,6 +565,9 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 .btn-danger-ghost:hover { border-color: var(--accent-red); background: rgba(255,59,59,0.08); }
 
 .btn-icon.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(91,155,255,0.08); }
+/* Stato sync Google Calendar in header: verde=connesso, altrimenti attenuato */
+#gcal-status.connected { border-color: var(--accent-green); color: var(--accent-green); background: rgba(46,204,113,0.08); }
+#gcal-status:not(.connected) { opacity: 0.55; }
 
 /* "Raggruppa": ogni gruppo è un vero .panel.table-panel a sé (stesse regole
    della tabella non raggruppata, nessuno sfondo/colore diverso incollato
@@ -1138,6 +1168,28 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 }
 .week-add:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: var(--bg3); }
 
+/* Riga extra per gli Appuntamenti (collegi/consigli di classe/incontri) sopra
+   la griglia a periodi: non legati a un'ora di lezione, quindi fuori dalle
+   righe "ora" — stessa griglia CSS (--week-cols), una riga in più */
+.week-extra-label {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  color: var(--text-hint); text-align: center; padding: 4px 0 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-idle); align-self: end;
+}
+.week-extra-cell {
+  min-height: 24px; padding: 4px 4px 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-idle);
+  display: flex; flex-direction: column; gap: 3px; justify-content: center;
+}
+.week-appt-chip {
+  font-size: 9.5px; font-weight: 700; color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-amber) 16%, var(--bg3));
+  border-left: 2px solid var(--accent-amber);
+  border-radius: 4px; padding: 2px 5px; cursor: pointer; transition: all var(--transition);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.week-appt-chip:hover { background: color-mix(in srgb, var(--accent-amber) 26%, var(--bg3)); }
+
 /* Vista calendario mensile */
 .cal-grid { display: grid; grid-template-columns: repeat(var(--cal-cols, 7), 1fr); gap: 6px; padding: 14px; }
 .cal-dow { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-align: center; padding-bottom: 6px; }
@@ -1161,6 +1213,48 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cal-lesson-more { font-size: 9px; font-weight: 600; color: var(--text-hint); padding: 0 4px; }
+
+/* ── Calendario (sezione unificata Lezioni+Colloqui+Appuntamenti) ──────── */
+.cal-legend { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+.cal-legend-chip {
+  font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--border-idle); background: transparent; color: var(--text-secondary);
+  cursor: pointer; transition: all var(--transition);
+}
+.cal-legend-chip:not(.active) { opacity: 0.45; }
+.cal-legend-chip.active[data-src="colloqui"] { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(91,155,255,0.08); }
+.cal-legend-chip.active[data-src="appuntamenti"] { border-color: var(--accent-amber); color: var(--accent-amber); background: rgba(255,180,0,0.08); }
+
+/* Vista Settimana di Calendario: colonne-giorno con eventi impilati
+   cronologicamente (a differenza della griglia a periodi di Lezioni, qui
+   convivono lezioni/colloqui/appuntamenti che non condividono lo stesso
+   sistema di "ora") */
+.cal-week-grid { display: grid; grid-template-columns: repeat(var(--week-cols, 5), minmax(0, 1fr)); gap: 8px; padding: 14px; }
+.cal-week-day {
+  border: 1px solid var(--border-idle); border-radius: 8px; padding: 8px;
+  min-height: 160px; display: flex; flex-direction: column; gap: 6px;
+}
+.cal-week-day.today { border-color: var(--accent-blue); border-width: 2px; }
+.cal-week-day-head { font-size: 11px; font-weight: 700; color: var(--text-secondary); text-align: center; padding-bottom: 4px; border-bottom: 1px solid var(--border-idle); }
+.cal-week-day-head.is-today { color: var(--accent-blue); }
+.cal-week-chip {
+  font-size: 10.5px; font-weight: 600; color: var(--text-primary); padding: 3px 6px; border-radius: 5px;
+  cursor: pointer; transition: all var(--transition);
+  border-left: 2px solid var(--chip-color, var(--border-idle));
+  background: color-mix(in srgb, var(--chip-color, var(--text-hint)) 14%, var(--bg3));
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-week-chip:hover { background: color-mix(in srgb, var(--chip-color, var(--text-hint)) 24%, var(--bg3)); }
+.cal-week-empty { font-size: 10.5px; color: var(--text-hint); text-align: center; padding: 8px 0; }
+
+/* Vista Agenda: elenco cronologico piatto, riusa .dash-list/.dash-item ma
+   senza il tetto di altezza pensato per i riquadri compatti della Dashboard */
+#cal-agenda-list { max-height: none; overflow-y: visible; padding: 14px; }
+.agenda-date-head {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-hint); padding: 14px 4px 6px;
+}
+.agenda-date-head:first-child { padding-top: 4px; }
 
 /* ── Rubriche valutative ──────────────────────────────────────────── */
 .rub-list { display: flex; flex-direction: column; gap: 12px; }

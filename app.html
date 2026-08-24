@@ -49,6 +49,11 @@
         <input type="file" id="import-file" accept="application/json" hidden/>
       </div>
     </div>
+    <button class="btn-icon" id="gcal-status" title="Google Calendar: non connesso — clicca per collegare" aria-label="Stato Google Calendar">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+      </svg>
+    </button>
     <img class="user-avatar hidden" id="user-avatar" alt="Utente"/>
     <button class="btn-icon" id="btn-logout" title="Esci" aria-label="Esci">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -73,40 +78,68 @@
         Dashboard
       </button>
 
-      <button class="subject-btn" data-view="alunni">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Alunni
-      </button>
-      <button class="subject-btn subject-btn-sub" data-view="alunno-detail">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
-        Scheda alunno
-      </button>
-      <button class="subject-btn subject-btn-sub" data-view="bes">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 0 0-5 5v3a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M19 10c0 4-3 7-7 7s-7-3-7-7"/></svg>
-        BES
-      </button>
+      <div class="subject-group" data-group="alunni">
+        <button class="subject-group-toggle">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span class="subject-group-label">Alunni</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
+        <div class="subject-group-children">
+          <button class="subject-btn subject-btn-sub" data-view="alunni">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Elenco alunni
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="alunno-detail">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+            Scheda alunno
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="bes">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 0 0-5 5v3a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5z"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M19 10c0 4-3 7-7 7s-7-3-7-7"/></svg>
+            BES
+          </button>
+        </div>
+      </div>
 
-      <button class="subject-btn" data-view="classi">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-        Classi
-      </button>
-      <button class="subject-btn subject-btn-sub" data-view="classe-detail">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/></svg>
-        Scheda classe
-      </button>
+      <div class="subject-group" data-group="classi">
+        <button class="subject-group-toggle">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="subject-group-label">Classi</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
+        <div class="subject-group-children">
+          <button class="subject-btn subject-btn-sub" data-view="classi">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Elenco classi
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="classe-detail">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/></svg>
+            Scheda classe
+          </button>
+        </div>
+      </div>
 
-      <button class="subject-btn" data-view="voti">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-        Voti
-      </button>
-      <button class="subject-btn subject-btn-sub" data-view="verifiche">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
-        Verifiche
-      </button>
-      <button class="subject-btn subject-btn-sub" data-view="rubriche">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Rubriche valutative
-      </button>
+      <div class="subject-group" data-group="voti">
+        <button class="subject-group-toggle">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span class="subject-group-label">Voti</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
+        <div class="subject-group-children">
+          <button class="subject-btn subject-btn-sub" data-view="voti">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Elenco voti
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="verifiche">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+            Verifiche
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="rubriche">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Rubriche valutative
+          </button>
+        </div>
+      </div>
+
       <button class="subject-btn" data-view="lezioni">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         Lezioni
@@ -119,14 +152,33 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><polyline points="8 12 11 15 16 9"/></svg>
         To-do
       </button>
-      <button class="subject-btn" data-view="orario">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Orario
-      </button>
-      <button class="subject-btn" data-view="colloqui">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Colloqui
-      </button>
+
+      <div class="subject-group" data-group="gestione-oraria">
+        <button class="subject-group-toggle">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="subject-group-label">Gestione oraria</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
+        <div class="subject-group-children">
+          <button class="subject-btn subject-btn-sub" data-view="orario">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Orario
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="colloqui">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Colloqui
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="appuntamenti">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M9 16l2 2 4-4"/></svg>
+            Appuntamenti
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="calendario">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Calendario
+          </button>
+        </div>
+      </div>
+
       <button class="subject-btn" data-view="report">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="12" y2="11"/></svg>
         Report
@@ -744,7 +796,7 @@
     </section>
 
     <!-- Colloqui view: orario ricorrente di ricevimento (finisce anche in
-         Orario) + elenco dei singoli appuntamenti con le famiglie -->
+         Orario) + elenco dei singoli colloqui con le famiglie -->
     <section id="view-colloqui" class="hidden">
       <div class="panel" style="margin-bottom:16px">
         <div class="panel-head"><span class="panel-title">Orario di ricevimento</span></div>
@@ -787,6 +839,100 @@
         </div>
         <h3>Nessun colloquio programmato</h3>
         <p>Aggiungi un colloquio con "+ Colloquio".</p>
+      </div>
+    </section>
+
+    <!-- Appuntamenti view: collegi docenti, consigli di classe, incontri
+         (anche pomeridiani o online) — sezione a sé, separata dai Colloqui -->
+    <section id="view-appuntamenti" class="hidden">
+      <div class="view-toolbar notion-toolbar">
+        <span class="toolbar-info" id="appuntamenti-count"></span>
+        <button class="btn-icon btn-icon-primary" id="btn-add-appuntamento" title="Nuovo appuntamento">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
+      <div class="floating-bulk-bar hidden" id="appuntamenti-bulk-bar">
+        <span class="toolbar-info" id="appuntamenti-sel-count"></span>
+        <button class="btn-icon" id="btn-appuntamenti-select-all" title="Seleziona tutto">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><polyline points="8 12 11 15 16 9"/></svg>
+        </button>
+        <button class="btn-icon btn-icon-danger" id="btn-appuntamenti-elimina-bulk" title="Elimina selezionati">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+      <div class="panel table-panel">
+        <div class="table-wrap" id="appuntamenti-wrap"></div>
+      </div>
+      <div class="empty-state hidden" id="appuntamenti-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Nessun appuntamento</h3>
+        <p>Aggiungi un collegio, un consiglio di classe o un incontro con "+ Appuntamento".</p>
+      </div>
+    </section>
+
+    <!-- Calendario view: aggrega Colloqui e Appuntamenti (non le Lezioni,
+         che hanno la propria vista Settimana/Calendario) con viste
+         Settimana/Mese/Agenda, filtrabili per tipo tramite la legenda -->
+    <section id="view-calendario" class="hidden">
+      <div class="view-toolbar notion-toolbar">
+        <div class="seg-toggle" id="cal-view-toggle">
+          <button class="seg-btn active" data-calv="settimana">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="4" x2="9" y2="21"/><line x1="15" y1="4" x2="15" y2="21"/></svg>
+            Settimana
+          </button>
+          <button class="seg-btn" data-calv="mese">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Mese
+          </button>
+          <button class="seg-btn" data-calv="agenda">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Agenda
+          </button>
+        </div>
+        <div class="cal-legend" id="cal-legend">
+          <button class="cal-legend-chip active" data-src="colloqui">Colloqui</button>
+          <button class="cal-legend-chip active" data-src="appuntamenti">Appuntamenti</button>
+        </div>
+      </div>
+
+      <div id="cal-settimana-view">
+        <div class="panel table-panel">
+          <div class="panel-toolbar-row">
+            <span class="cal-nav-label" id="cal-week-label"></span>
+            <button class="btn-ghost" id="cal-week-today">Oggi</button>
+            <button class="pager-arrow" id="cal-week-prev" title="Settimana precedente">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button class="pager-arrow" id="cal-week-next" title="Settimana successiva">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <div class="table-wrap" id="cal-week-wrap"></div>
+        </div>
+      </div>
+
+      <div id="cal-mese-view" class="hidden">
+        <div class="panel panel-month">
+          <div class="panel-toolbar-row">
+            <span class="cal-nav-label" id="cal-month-label"></span>
+            <button class="btn-ghost" id="cal-month-today">Oggi</button>
+            <button class="pager-arrow" id="cal-month-prev" title="Mese precedente">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button class="pager-arrow" id="cal-month-next" title="Mese successivo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <div class="cal-grid" id="cal-calendar-grid"></div>
+        </div>
+      </div>
+
+      <div id="cal-agenda-view" class="hidden">
+        <div class="panel">
+          <div class="dash-list" id="cal-agenda-list"></div>
+        </div>
       </div>
     </section>
 
@@ -1066,6 +1212,24 @@
   </div>
 </div>
 
+<!-- ── Modal appuntamento (nuovo/modifica): collegio, consiglio di classe, incontro ── -->
+<div class="modal-overlay hidden" id="appuntamento-overlay">
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h2 class="modal-title" id="appuntamento-title">Nuovo appuntamento</h2>
+      <button class="btn-icon modal-close" id="appuntamento-close" aria-label="Chiudi">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="appuntamento-body"></div>
+    <div class="form-foot">
+      <button class="btn-ghost btn-danger-ghost hidden" id="appuntamento-delete" type="button">Elimina</button>
+      <button class="btn-ghost" id="appuntamento-cancel" type="button">Annulla</button>
+      <button class="btn-primary" id="appuntamento-save" type="button">Salva</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal to-do (nuovo/modifica) ──────────────────────────────────── -->
 <div class="modal-overlay hidden" id="todo-overlay">
   <div class="modal-box modal-box-sm">
@@ -1163,6 +1327,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="firebase-init.js"></script>
+<script src="gcal.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="db.js"></script>
 <script src="app.js"></script>
