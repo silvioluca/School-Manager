@@ -6428,9 +6428,19 @@ function updateGCalStatus(connected) {
     : 'Google Calendar: non connesso — clicca per collegare';
 }
 GCal.onStatusChange(updateGCalStatus);
+// Il corpo delle risposte di errore di Google è JSON ({error:{message,...}});
+// mostrarlo per esteso evita di dover aprire la console per capire la causa
+// esatta di un 403/altro errore (API non abilitata vs scope insufficiente
+// vs altro sono tutti "forbidden" qui, ma il messaggio le distingue).
+function gcalDetailMessage(check) {
+  if (!check.detail) return '';
+  try { return JSON.parse(check.detail)?.error?.message || check.detail; } catch { return check.detail; }
+}
 function gcalErrorMessage(check) {
   if (check.reason === 'forbidden') {
-    return 'Permesso ottenuto, ma Google ha rifiutato la richiesta verso Calendar.\n\n'
+    const detail = gcalDetailMessage(check);
+    return 'Permesso ottenuto, ma Google ha rifiutato la richiesta verso Calendar (403).\n\n'
+      + (detail ? `Messaggio di Google: "${detail}"\n\n` : '')
       + 'Causa più probabile: la "Google Calendar API" non è abilitata nel progetto Google Cloud collegato a questo account Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Libreria", cerca "Google Calendar API" e abilitala per il progetto, poi riprova a collegare.';
   }
   if (check.reason === 'no-token' || check.reason === 'gis-not-loaded') {

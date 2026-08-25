@@ -108,8 +108,16 @@ const GCal = (() => {
       });
     } catch { return { ok: false, reason: 'network' }; }
     if (res.status === 401) { setToken(''); return { ok: false, reason: 'unauthorized' }; }
-    if (res.status === 403) return { ok: false, reason: 'forbidden', detail: await res.text().catch(() => '') };
-    if (!res.ok) return { ok: false, reason: 'http-' + res.status, detail: await res.text().catch(() => '') };
+    if (res.status === 403) {
+      const detail = await res.text().catch(() => '');
+      console.error('[gcal] verify 403 — risposta completa di Google:', detail); // sempre in console, oltre che nell'alert
+      return { ok: false, reason: 'forbidden', detail };
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error(`[gcal] verify ${res.status} — risposta completa di Google:`, detail);
+      return { ok: false, reason: 'http-' + res.status, detail };
+    }
     return { ok: true };
   }
 
@@ -129,6 +137,11 @@ const GCal = (() => {
       callback: resp => {
         if (!_pendingResolve) return;
         const resolve = _pendingResolve; _pendingResolve = null;
+        // Logga sempre gli scope OTTENUTI (resp.scope): Google può a volte
+        // restituire un token valido ma senza lo scope calendar.events
+        // richiesto (consenso parziale) — qui si vede subito, senza dover
+        // aspettare il 403 sulla chiamata API vera e propria.
+        console.log('[gcal] token ottenuto — scope concessi:', resp && resp.scope, '— includono calendar.events:', !!(resp && resp.scope && resp.scope.includes('calendar.events')));
         if (resp && resp.access_token) { setToken(resp.access_token); resolve({ ok: true }); }
         else resolve({ ok: false, reason: (resp && resp.error) || 'no-token' });
       },
