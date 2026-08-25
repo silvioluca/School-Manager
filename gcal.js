@@ -92,18 +92,20 @@ const GCal = (() => {
     await _call('/' + gcalEventId, { method: 'DELETE' });
   }
 
-  // Verifica reale (non solo "il token è presente"): prova a leggere il
-  // calendario "primary". Usata dopo il login/riconnessione per dare un
-  // riscontro immediato e concreto invece di un'icona che dice "connesso"
-  // anche quando la sync in realtà fallisce sempre in silenzio (es. Calendar
-  // API non abilitata nel progetto Google Cloud collegato a Firebase: la
-  // causa più comune quando "non sembra collegato" nonostante il login).
+  // Verifica reale (non solo "il token è presente"): prova a leggere gli
+  // eventi del calendario "primary" — NON i metadati del calendario
+  // (GET /calendars/primary): quella è un'operazione "calendars.get", che
+  // richiede uno scope diverso (es. calendar/calendar.readonly) da
+  // calendar.events, il solo richiesto da quest'app — usarla come verifica
+  // dava un falso 403 "insufficient scope" anche a permesso corretto,
+  // perché le operazioni sugli eventi (quelle davvero usate per la sync,
+  // vedi upsertEvent/deleteEvent sopra) sono coperte da calendar.events.
   async function verify() {
     const token = getToken();
     if (!token) return { ok: false, reason: 'no-token' };
     let res;
     try {
-      res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary', {
+      res = await fetch(API + '?maxResults=1', {
         headers: { Authorization: 'Bearer ' + token },
       });
     } catch { return { ok: false, reason: 'network' }; }
