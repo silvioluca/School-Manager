@@ -6414,7 +6414,11 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 // ── Stato Google Calendar in header: l'access token OAuth (scope
 //    calendar.events, catturato al login) dura circa un'ora — quando manca
 //    o è scaduto il pulsante permette di riconnettersi senza rifare
-//    l'accesso completo, tramite reauthenticateWithPopup. Lo stato mostrato
+//    l'accesso completo, tramite reauthenticateWithRedirect (non un popup:
+//    GitHub Pages invia di default l'header Cross-Origin-Opener-Policy:
+//    same-origin — non personalizzabile su GitHub Pages — che rompe la
+//    comunicazione popup↔finestra principale usata da *WithPopup, causando
+//    "nessun permesso ottenuto" anche a login riuscito). Lo stato mostrato
 //    riflette una verifica reale (GCal.verify, una chiamata di prova
 //    all'API), non solo "il token è presente": così l'icona non dice
 //    "connesso" mentre la sync fallisce in silenzio a ogni salvataggio.
@@ -6445,23 +6449,32 @@ function gcalErrorMessage(check) {
 document.getElementById('gcal-status').addEventListener('click', async () => {
   const user = firebase.auth().currentUser;
   if (!user) return;
-  const btn = document.getElementById('gcal-status');
-  btn.disabled = true;
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.events');
     // Forza la schermata di consenso completa: senza questo, se Google
     // ritiene la sessione "già fidata" può saltarla e non restituire alcun
-    // access token nella credential (causa nota di "nessun permesso
-    // ottenuto" anche quando il popup si chiude senza errori).
+    // access token nella credential.
     provider.setCustomParameters({ prompt: 'consent' });
-    const result = await user.reauthenticateWithPopup(provider);
+    await user.reauthenticateWithRedirect(provider);
+    // Da qui la pagina naviga via: il risultato si legge in
+    // handleGCalRedirectResult() al ritorno (vedi sotto).
+  } catch (e) {
+    alert('Impossibile avviare la connessione a Google Calendar: ' + (e.message || e.code || 'errore sconosciuto'));
+  }
+});
+
+// Cattura il risultato di un eventuale redirect OAuth di ritorno (solo dalla
+// riconnessione Calendar qui sopra: il login iniziale passa da login.html e
+// arriva già con l'esito gestito). Va letto PRIMA di procedere oltre,
+// altrimenti l'access token andrebbe perso.
+async function handleGCalRedirectResult() {
+  try {
+    const result = await firebase.auth().getRedirectResult();
+    if (!result || !result.user) return;
     const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    // credential.accessToken è il percorso documentato; su alcune versioni
-    // dell'SDK compat il token può comparire solo nel payload interno
-    // _tokenResponse — usato come ripiego, non come primario.
     const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
-    console.log('[gcal] riconnessione: credential presente =', !!credential, '— accessToken ottenuto =', !!token);
+    console.log('[gcal] riconnessione (redirect): credential presente =', !!credential, '— accessToken ottenuto =', !!token);
     GCal.setToken(token);
     const check = await GCal.verify();
     if (check.ok) {
@@ -6475,17 +6488,16 @@ document.getElementById('gcal-status').addEventListener('click', async () => {
       alert(gcalErrorMessage(check));
     }
   } catch (e) {
-    if (e.code !== 'auth/popup-closed-by-user') alert('Impossibile collegare Google Calendar: ' + (e.message || e.code || 'errore sconosciuto'));
-  } finally {
-    btn.disabled = false;
+    console.warn('[gcal] errore nel leggere il risultato del redirect', e);
   }
-});
+}
 
-smAuthReady.then(user => {
+smAuthReady.then(async user => {
   if (!smIsAllowed(user)) { window.location.replace('login.html'); return; }
   const av = document.getElementById('user-avatar');
   if (user.photoURL) { av.src = user.photoURL; av.classList.remove('hidden'); }
   av.title = user.email;
+  await handleGCalRedirectResult();
   updateGCalStatus(GCal.hasToken());
   // Il token può essere sopravvissuto in sessionStorage da prima ma essere nel
   // frattempo scaduto/revocato: verifica in background e corregge l'icona se

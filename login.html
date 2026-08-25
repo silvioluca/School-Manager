@@ -115,14 +115,42 @@
     errEl.classList.add('visible');
   }
 
-  // Già autenticato con account autorizzato → vai all'app
-  smAuthReady.then(user => {
+  // Login via redirect (non popup): GitHub Pages invia di default l'header
+  // Cross-Origin-Opener-Policy: same-origin, che rompe la comunicazione
+  // popup↔finestra principale usata da signInWithPopup (Firebase non riesce
+  // più a leggere lo stato del popup né il risultato/permesso ottenuto — la
+  // console mostra "Cross-Origin-Opener-Policy policy would block the
+  // window.closed call"). GitHub Pages non permette di personalizzare gli
+  // header di risposta, quindi l'unica soluzione è evitare del tutto i
+  // popup: signInWithRedirect naviga via e poi torna qui, il risultato si
+  // legge con getRedirectResult() al ritorno.
+  async function handleRedirectResult() {
+    try {
+      const result = await firebase.auth().getRedirectResult();
+      if (!result || !result.user) return;
+      const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+      // credential.accessToken è il percorso documentato; su alcune versioni
+      // dell'SDK compat il token può comparire solo nel payload interno
+      // _tokenResponse — usato come ripiego, non come primario.
+      const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
+      console.log('[gcal] login (redirect): credential presente =', !!credential, '— accessToken ottenuto =', !!token);
+      GCal.setToken(token);
+    } catch (e) {
+      showError('Errore di accesso: ' + (e.message || e.code || 'riprova.'));
+    }
+  }
+
+  (async () => {
+    await handleRedirectResult();
+    // Già autenticato con account autorizzato (login appena completato, o
+    // sessione già valida da prima) → vai all'app
+    const user = await smAuthReady;
     if (smIsAllowed(user)) window.location.replace('app.html');
     else if (user) {
       showError(`Account non autorizzato: ${user.email}`);
-      firebase.auth().signOut();
+      await firebase.auth().signOut();
     }
-  });
+  })();
 
   btn.addEventListener('click', async () => {
     errEl.classList.remove('visible');
@@ -135,27 +163,12 @@
       provider.addScope('https://www.googleapis.com/auth/calendar.events');
       // Forza la schermata di consenso completa: senza questo, se Google
       // ritiene il login "già fidato" può saltarla e non restituire alcun
-      // access token nella credential (causa nota di "nessun permesso
-      // ottenuto" anche quando il login stesso riesce).
+      // access token nella credential.
       provider.setCustomParameters({ prompt: 'consent' });
-      const result = await firebase.auth().signInWithPopup(provider);
-      const { user } = result;
-      if (smIsAllowed(user)) {
-        const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-        // credential.accessToken è il percorso documentato; su alcune
-        // versioni dell'SDK compat il token può comparire solo nel payload
-        // interno _tokenResponse — usato come ripiego, non come primario.
-        const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
-        console.log('[gcal] login: credential presente =', !!credential, '— accessToken ottenuto =', !!token);
-        GCal.setToken(token);
-        window.location.replace('app.html');
-      } else {
-        showError(`Account non autorizzato: ${user.email}`);
-        await firebase.auth().signOut();
-      }
+      await firebase.auth().signInWithRedirect(provider);
+      // Da qui la pagina naviga via: il risultato si legge in handleRedirectResult() al ritorno.
     } catch (e) {
-      if (e.code !== 'auth/popup-closed-by-user') showError('Errore di accesso. Riprova.');
-    } finally {
+      showError('Errore di accesso. Riprova.');
       btn.disabled = false;
     }
   });
