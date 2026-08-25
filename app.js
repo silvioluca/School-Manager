@@ -12,6 +12,7 @@ const state = {
   students: [],            // cache documenti
   openId: null,            // alunno mostrato nella Scheda alunno
   openYear: null,          // anno selezionato nella scheda
+  noteCtx: null,           // { kind: 'colloquio'|'appuntamento', anno, id } mostrato nella pagina Nota
   alunniSelected: new Set(), // id alunno selezionati per le azioni di gruppo
   classiSelected: new Set(), // chiavi "anno|classe" selezionate per le azioni di gruppo
   votiSelected: new Set(),  // chiavi "sid|anno|materia|gid" selezionate per le azioni di gruppo
@@ -57,11 +58,11 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'alunno-detail', 'classe-detail'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'alunno-detail', 'classe-detail', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative',
-  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do',
+  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
 const TIPI_APPUNTAMENTO = { collegio: 'Collegio docenti', consiglio: 'Consiglio di classe', incontro: 'Incontro' };
@@ -645,7 +646,8 @@ function renderView() {
   document.getElementById('search-wrap').classList.toggle('hidden',
     state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
-    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo');
+    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo'
+    || state.view === 'item-note');
   document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report');
   document.getElementById('filter-alunno-report').classList.toggle('hidden', state.view !== 'report');
   // Periodo Da/A: filtro condiviso da Voti, Lezioni, Compiti e Report
@@ -660,7 +662,7 @@ function renderView() {
     dashboard: renderDashboard, alunni: renderAlunni, classi: renderClassi, voti: renderVoti, report: renderReport,
     lezioni: renderLezioni, compiti: renderCompiti, orario: renderOrario, verifiche: renderVerifiche, rubriche: renderRubriche,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
-    'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage,
+    'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote,
   };
   try {
     renderers[state.view]();
@@ -3112,7 +3114,8 @@ function renderColloqui() {
     colloquiWrap.innerHTML = `<table class="voti-table"><thead><tr>${colloquiThead}</tr></thead><tbody>${rows.map(colloquioRowHtml).join('')}</tbody></table>`;
     activeContainer = colloquiWrap;
   }
-  activeContainer.querySelectorAll('.grade-edit, .name-open').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openColloquio(btn.dataset.anno, btn.dataset.id); }));
+  activeContainer.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openColloquio(btn.dataset.anno, btn.dataset.id); }));
+  activeContainer.querySelectorAll('.name-open').forEach(td => td.addEventListener('click', e => { e.stopPropagation(); openItemNote('colloquio', td.dataset.anno, td.dataset.id); }));
   activeContainer.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Eliminare questo colloquio?')) return;
@@ -3266,24 +3269,18 @@ function richToPlainText(html) {
 function colloquioFormBody(c) {
   const studentiOrdinati = state.students.slice().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
   return `
-    <div class="modal-body-flex">
-      <div class="vf-row">
-        <label class="vf-label">Data<input type="date" class="vf-input" id="cl-data" value="${escHtml(c.data || todayISO())}"/></label>
-        <label class="vf-label">Ora<input type="time" class="vf-input" id="cl-ora" value="${escHtml(c.ora || '')}"/></label>
-      </div>
-      <div class="vf-row">
-        <label class="vf-label">Alunno
-          <select class="vf-input" id="cl-studente">
-            <option value="">— Seleziona —</option>
-            ${studentiOrdinati.map(s => `<option value="${s.id}" ${c.studenteId === s.id ? 'selected' : ''}>${escHtml(s.cognome)} ${escHtml(s.nome)}${DB.classeCorrente(s) ? ` (${escHtml(DB.classeCorrente(s))})` : ''}</option>`).join('')}
-          </select>
-        </label>
-        <label class="vf-label">Partecipanti<input class="vf-input" id="cl-partecipanti" placeholder="es. Madre, Padre" value="${escHtml(c.partecipanti || '')}"/></label>
-      </div>
-      <label class="vf-label">Link Meet<input type="url" class="vf-input" id="cl-meet" placeholder="https://meet.google.com/…" value="${escHtml(c.meetLink || '')}"/></label>
-      <label class="vf-label">Note</label>
-      ${richToolbarHtml('cl-note')}
-    </div>`;
+    <div class="vf-row">
+      <label class="vf-label">Data<input type="date" class="vf-input" id="cl-data" value="${escHtml(c.data || todayISO())}"/></label>
+      <label class="vf-label">Ora<input type="time" class="vf-input" id="cl-ora" value="${escHtml(c.ora || '')}"/></label>
+    </div>
+    <label class="vf-label">Alunno
+      <select class="vf-input" id="cl-studente">
+        <option value="">— Seleziona —</option>
+        ${studentiOrdinati.map(s => `<option value="${s.id}" ${c.studenteId === s.id ? 'selected' : ''}>${escHtml(s.cognome)} ${escHtml(s.nome)}${DB.classeCorrente(s) ? ` (${escHtml(DB.classeCorrente(s))})` : ''}</option>`).join('')}
+      </select>
+    </label>
+    <label class="vf-label">Partecipanti<input class="vf-input" id="cl-partecipanti" placeholder="es. Madre, Padre" value="${escHtml(c.partecipanti || '')}"/></label>
+    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="cl-meet" placeholder="https://meet.google.com/…" value="${escHtml(c.meetLink || '')}"/></label>`;
 }
 let colloquioCtx = null;
 function openColloquio(anno, id) {
@@ -3292,8 +3289,6 @@ function openColloquio(anno, id) {
   colloquioCtx = { anno, id };
   document.getElementById('colloquio-title').textContent = 'Modifica colloquio';
   document.getElementById('colloquio-body').innerHTML = colloquioFormBody(c);
-  wireRichToolbar('cl-note');
-  setRichValue('cl-note', c.note);
   document.getElementById('colloquio-delete').classList.remove('hidden');
   document.getElementById('colloquio-overlay').classList.remove('hidden');
 }
@@ -3301,7 +3296,6 @@ document.getElementById('btn-add-colloquio').addEventListener('click', () => {
   colloquioCtx = null;
   document.getElementById('colloquio-title').textContent = 'Nuovo colloquio';
   document.getElementById('colloquio-body').innerHTML = colloquioFormBody({ data: todayISO() });
-  wireRichToolbar('cl-note');
   document.getElementById('colloquio-delete').classList.add('hidden');
   document.getElementById('colloquio-overlay').classList.remove('hidden');
 });
@@ -3331,15 +3325,21 @@ document.getElementById('colloquio-save').addEventListener('click', async () => 
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('cl-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
-  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), note: getRichValue('cl-note'), meetLink: val('cl-meet') };
+  const attrs = { data, ora: val('cl-ora'), studenteId: val('cl-studente'), partecipanti: val('cl-partecipanti'), meetLink: val('cl-meet') };
   const anno = annoFromData(data);
   try {
-    const prevGcalEventId = colloquioCtx ? (DB.getColloqui(colloquioCtx.anno).find(x => x.id === colloquioCtx.id)?.gcalEventId || '') : '';
+    // La nota si scrive dalla pagina dedicata (non da questo modale): va
+    // preservata esplicitamente solo nel caso "cambio di A.S." (rimuovi +
+    // ricrea), perché altrimenti "note" non specificata verrebbe azzerata da
+    // _newColloquio. Nel caso "stesso A.S." l'update non tocca affatto "note"
+    // (Object.assign aggiorna solo le chiavi presenti in attrs).
+    const existing = colloquioCtx ? DB.getColloqui(colloquioCtx.anno).find(x => x.id === colloquioCtx.id) : null;
+    const prevGcalEventId = existing?.gcalEventId || '';
     let targetId;
     if (colloquioCtx) {
       if (anno !== colloquioCtx.anno) {
         await DB.removeColloquio(colloquioCtx.anno, colloquioCtx.id);
-        targetId = (await DB.addColloquio(anno, attrs)).id;
+        targetId = (await DB.addColloquio(anno, { ...attrs, note: existing?.note || '' })).id;
       } else {
         await DB.updateColloquio(colloquioCtx.anno, colloquioCtx.id, attrs);
         targetId = colloquioCtx.id;
@@ -3349,7 +3349,7 @@ document.getElementById('colloquio-save').addEventListener('click', async () => 
     }
     closeColloquio();
     renderAll();
-    syncColloquioToGCal(anno, targetId, attrs, prevGcalEventId);
+    syncColloquioToGCal(anno, targetId, { ...attrs, note: existing?.note || '' }, prevGcalEventId);
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
 document.getElementById('colloquio-delete').addEventListener('click', async () => {
@@ -3415,7 +3415,8 @@ function renderAppuntamenti() {
   if (!rows.length) { wrap.innerHTML = ''; panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   wrap.innerHTML = `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${rows.map(appuntamentoRowHtml).join('')}</tbody></table>`;
-  wrap.querySelectorAll('.grade-edit, .name-open').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openAppuntamento(btn.dataset.anno, btn.dataset.id); }));
+  wrap.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openAppuntamento(btn.dataset.anno, btn.dataset.id); }));
+  wrap.querySelectorAll('.name-open').forEach(td => td.addEventListener('click', e => { e.stopPropagation(); openItemNote('appuntamento', td.dataset.anno, td.dataset.id); }));
   wrap.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
     e.stopPropagation();
     if (!confirm('Eliminare questo appuntamento?')) return;
@@ -3466,36 +3467,32 @@ document.getElementById('btn-appuntamenti-select-all').addEventListener('click',
 
 function appuntamentoFormBody(a) {
   return `
-    <div class="modal-body-flex">
-      <div class="vf-row">
-        <label class="vf-label">Tipo
-          <select class="vf-input" id="ap-tipo">
-            ${Object.entries(TIPI_APPUNTAMENTO).map(([k, l]) => `<option value="${k}" ${a.tipo === k ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
-          </select>
-        </label>
-        <label class="vf-label">Oggetto<input class="vf-input" id="ap-oggetto" placeholder="es. Scrutini primo quadrimestre" value="${escHtml(a.oggetto || '')}"/></label>
-      </div>
-      <div class="vf-row">
-        <label class="vf-label">Data<input type="date" class="vf-input" id="ap-data" value="${escHtml(a.data || todayISO())}"/></label>
-        <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="ap-ora" value="${escHtml(a.ora || '')}"/></label>
-        <label class="vf-label">Ora fine<input type="time" class="vf-input" id="ap-ora-fine" value="${escHtml(a.oraFine || '')}"/></label>
-      </div>
-      <div class="vf-row">
-        <label class="vf-label">Modalità
-          <select class="vf-input" id="ap-modalita">
-            <option value="presenza" ${a.modalita !== 'online' ? 'selected' : ''}>In presenza</option>
-            <option value="online" ${a.modalita === 'online' ? 'selected' : ''}>Online</option>
-          </select>
-        </label>
-        <label class="vf-label">Classe (facoltativa)
-          <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
-          <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
-        </label>
-        <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>
-      </div>
-      <label class="vf-label">Note</label>
-      ${richToolbarHtml('ap-note')}
-    </div>`;
+    <div class="vf-row">
+      <label class="vf-label">Tipo
+        <select class="vf-input" id="ap-tipo">
+          ${Object.entries(TIPI_APPUNTAMENTO).map(([k, l]) => `<option value="${k}" ${a.tipo === k ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
+        </select>
+      </label>
+      <label class="vf-label">Oggetto<input class="vf-input" id="ap-oggetto" placeholder="es. Scrutini primo quadrimestre" value="${escHtml(a.oggetto || '')}"/></label>
+    </div>
+    <div class="vf-row">
+      <label class="vf-label">Data<input type="date" class="vf-input" id="ap-data" value="${escHtml(a.data || todayISO())}"/></label>
+      <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="ap-ora" value="${escHtml(a.ora || '')}"/></label>
+      <label class="vf-label">Ora fine<input type="time" class="vf-input" id="ap-ora-fine" value="${escHtml(a.oraFine || '')}"/></label>
+    </div>
+    <div class="vf-row">
+      <label class="vf-label">Modalità
+        <select class="vf-input" id="ap-modalita">
+          <option value="presenza" ${a.modalita !== 'online' ? 'selected' : ''}>In presenza</option>
+          <option value="online" ${a.modalita === 'online' ? 'selected' : ''}>Online</option>
+        </select>
+      </label>
+      <label class="vf-label">Classe (facoltativa)
+        <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
+        <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
+      </label>
+    </div>
+    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>`;
 }
 let appuntamentoCtx = null;
 function openAppuntamento(anno, id) {
@@ -3504,8 +3501,6 @@ function openAppuntamento(anno, id) {
   appuntamentoCtx = { anno, id };
   document.getElementById('appuntamento-title').textContent = 'Modifica appuntamento';
   document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody(a);
-  wireRichToolbar('ap-note');
-  setRichValue('ap-note', a.note);
   document.getElementById('appuntamento-delete').classList.remove('hidden');
   document.getElementById('appuntamento-overlay').classList.remove('hidden');
 }
@@ -3513,7 +3508,6 @@ document.getElementById('btn-add-appuntamento').addEventListener('click', () => 
   appuntamentoCtx = null;
   document.getElementById('appuntamento-title').textContent = 'Nuovo appuntamento';
   document.getElementById('appuntamento-body').innerHTML = appuntamentoFormBody({ data: todayISO(), tipo: 'incontro', modalita: 'presenza' });
-  wireRichToolbar('ap-note');
   document.getElementById('appuntamento-delete').classList.add('hidden');
   document.getElementById('appuntamento-overlay').classList.remove('hidden');
 });
@@ -3545,16 +3539,21 @@ document.getElementById('appuntamento-save').addEventListener('click', async () 
   const attrs = {
     tipo: val('ap-tipo') || 'incontro', data, ora: val('ap-ora'), oraFine: val('ap-ora-fine'),
     modalita: val('ap-modalita') || 'presenza', classe: val('ap-classe'), oggetto: val('ap-oggetto'),
-    note: getRichValue('ap-note'), meetLink: val('ap-meet'),
+    meetLink: val('ap-meet'),
   };
   const anno = annoFromData(data);
   try {
-    const prevGcalEventId = appuntamentoCtx ? (DB.getAppuntamenti(appuntamentoCtx.anno).find(x => x.id === appuntamentoCtx.id)?.gcalEventId || '') : '';
+    // La nota si scrive dalla pagina dedicata (non da questo modale): va
+    // preservata esplicitamente solo nel caso "cambio di A.S." (rimuovi +
+    // ricrea); nel caso "stesso A.S." l'update non tocca "note" (Object.assign
+    // aggiorna solo le chiavi presenti in attrs).
+    const existing = appuntamentoCtx ? DB.getAppuntamenti(appuntamentoCtx.anno).find(x => x.id === appuntamentoCtx.id) : null;
+    const prevGcalEventId = existing?.gcalEventId || '';
     let targetId;
     if (appuntamentoCtx) {
       if (anno !== appuntamentoCtx.anno) {
         await DB.removeAppuntamento(appuntamentoCtx.anno, appuntamentoCtx.id);
-        targetId = (await DB.addAppuntamento(anno, attrs)).id;
+        targetId = (await DB.addAppuntamento(anno, { ...attrs, note: existing?.note || '' })).id;
       } else {
         await DB.updateAppuntamento(appuntamentoCtx.anno, appuntamentoCtx.id, attrs);
         targetId = appuntamentoCtx.id;
@@ -3564,7 +3563,7 @@ document.getElementById('appuntamento-save').addEventListener('click', async () 
     }
     closeAppuntamento();
     renderAll();
-    syncAppuntamentoToGCal(anno, targetId, attrs, prevGcalEventId);
+    syncAppuntamentoToGCal(anno, targetId, { ...attrs, note: existing?.note || '' }, prevGcalEventId);
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
 document.getElementById('appuntamento-delete').addEventListener('click', async () => {
@@ -3577,6 +3576,71 @@ document.getElementById('appuntamento-delete').addEventListener('click', async (
     renderAll();
     if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
   } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+
+// ── Pagina Nota (Colloquio/Appuntamento): non modale, sostituisce il main
+//    come "Scheda alunno"/"Scheda classe" — solo il testo libero (titolo,
+//    elenchi, checkbox). I campi data/ora/ecc. restano nel modale compatto
+//    sopra (icona matita), aperto da qui con "Modifica dati" ──────────────
+function itemNoteRecord(ctx) {
+  if (!ctx) return null;
+  return ctx.kind === 'colloquio'
+    ? DB.getColloqui(ctx.anno).find(x => x.id === ctx.id)
+    : DB.getAppuntamenti(ctx.anno).find(x => x.id === ctx.id);
+}
+function openItemNote(kind, anno, id) {
+  const rec = kind === 'colloquio' ? DB.getColloqui(anno).find(x => x.id === id) : DB.getAppuntamenti(anno).find(x => x.id === id);
+  if (!rec) return;
+  state.previousView = state.view === 'item-note' ? state.previousView : state.view;
+  state.noteCtx = { kind, anno, id };
+  setView('item-note');
+}
+function backFromItemNote() {
+  state.noteCtx = null;
+  state.view = state.previousView || 'colloqui';
+  renderView();
+}
+document.getElementById('note-back').addEventListener('click', backFromItemNote);
+document.getElementById('note-edit-props').addEventListener('click', () => {
+  const ctx = state.noteCtx;
+  if (!ctx) return;
+  if (ctx.kind === 'colloquio') openColloquio(ctx.anno, ctx.id);
+  else openAppuntamento(ctx.anno, ctx.id);
+});
+function renderItemNote() {
+  const ctx = state.noteCtx;
+  const rec = itemNoteRecord(ctx);
+  if (!ctx || !rec) { backFromItemNote(); return; }
+  let title, meta;
+  if (ctx.kind === 'colloquio') {
+    const s = state.students.find(x => x.id === rec.studenteId);
+    title = s ? `${s.cognome} ${s.nome}` : 'Colloquio';
+    meta = ['Colloquio', fmtData(rec.data), rec.ora, s ? classeOf(s, ctx.anno) : ''].filter(Boolean).join(' · ');
+  } else {
+    title = rec.oggetto || TIPI_APPUNTAMENTO[rec.tipo] || rec.tipo;
+    meta = [TIPI_APPUNTAMENTO[rec.tipo] || rec.tipo, fmtData(rec.data), rec.oraFine ? `${rec.ora || '—'}–${rec.oraFine}` : rec.ora].filter(Boolean).join(' · ');
+  }
+  document.getElementById('note-title').textContent = title;
+  document.getElementById('note-meta').textContent = meta;
+  document.getElementById('note-editor-wrap').innerHTML = richToolbarHtml('note');
+  wireRichToolbar('note');
+  setRichValue('note', rec.note);
+}
+document.getElementById('note-save').addEventListener('click', async () => {
+  const ctx = state.noteCtx;
+  if (!ctx) return;
+  const note = getRichValue('note');
+  try {
+    if (ctx.kind === 'colloquio') {
+      await DB.updateColloquio(ctx.anno, ctx.id, { note });
+      const rec = DB.getColloqui(ctx.anno).find(x => x.id === ctx.id);
+      syncColloquioToGCal(ctx.anno, ctx.id, rec, rec.gcalEventId);
+    } else {
+      await DB.updateAppuntamento(ctx.anno, ctx.id, { note });
+      const rec = DB.getAppuntamenti(ctx.anno).find(x => x.id === ctx.id);
+      syncAppuntamentoToGCal(ctx.anno, ctx.id, rec, rec.gcalEventId);
+    }
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
 
 // ── Data helpers condivisi da Lezioni/Orario ─────────────────────────
@@ -6369,7 +6433,11 @@ function gcalErrorMessage(check) {
     return 'Permesso ottenuto, ma Google ha rifiutato la richiesta verso Calendar.\n\n'
       + 'Causa più probabile: la "Google Calendar API" non è abilitata nel progetto Google Cloud collegato a questo account Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Libreria", cerca "Google Calendar API" e abilitala per il progetto, poi riprova a collegare.';
   }
-  if (check.reason === 'no-token') return 'Non è stato ottenuto alcun permesso di accesso a Google Calendar. Riprova.';
+  if (check.reason === 'no-token') {
+    return 'Il login è riuscito, ma Google non ha restituito alcun permesso di accesso a Calendar.\n\n'
+      + 'Causa più probabile: lo scope "calendar.events" non è registrato nella schermata di consenso OAuth del progetto Google Cloud collegato a Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Schermata consenso OAuth" → "Ambiti" ("Scopes"), aggiungi ".../auth/calendar.events" e salva, poi riprova a collegare.\n\n'
+      + 'Se invece durante il popup non ti è stata mostrata alcuna richiesta di permesso per Calendar, è lo stesso identico problema.';
+  }
   if (check.reason === 'unauthorized') return 'Il permesso è scaduto o non valido. Riprova a collegare.';
   if (check.reason === 'network') return 'Google Calendar non è raggiungibile in questo momento (rete). Riprova più tardi.';
   return `Google Calendar non risponde correttamente (${check.reason}). Riprova più tardi.`;
@@ -6382,9 +6450,19 @@ document.getElementById('gcal-status').addEventListener('click', async () => {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/calendar.events');
+    // Forza la schermata di consenso completa: senza questo, se Google
+    // ritiene la sessione "già fidata" può saltarla e non restituire alcun
+    // access token nella credential (causa nota di "nessun permesso
+    // ottenuto" anche quando il popup si chiude senza errori).
+    provider.setCustomParameters({ prompt: 'consent' });
     const result = await user.reauthenticateWithPopup(provider);
     const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    GCal.setToken(credential?.accessToken || '');
+    // credential.accessToken è il percorso documentato; su alcune versioni
+    // dell'SDK compat il token può comparire solo nel payload interno
+    // _tokenResponse — usato come ripiego, non come primario.
+    const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
+    console.log('[gcal] riconnessione: credential presente =', !!credential, '— accessToken ottenuto =', !!token);
+    GCal.setToken(token);
     const check = await GCal.verify();
     if (check.ok) {
       alert('Google Calendar collegato: colloqui e appuntamenti verranno sincronizzati automaticamente.');

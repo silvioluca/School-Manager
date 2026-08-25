@@ -873,6 +873,30 @@
       </div>
     </section>
 
+    <!-- Nota (Colloquio/Appuntamento): pagina dedicata nel main, non modale —
+         aperta cliccando sul nome/oggetto in tabella. I campi data/ora/ecc.
+         restano nel modale compatto (icona matita), volutamente separati -->
+    <section id="view-item-note" class="hidden">
+      <div class="view-toolbar">
+        <button class="btn-icon btn-back" id="note-back" title="Torna">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <button class="btn-icon" id="note-edit-props" title="Modifica dati">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+      </div>
+      <div class="panel note-page-panel">
+        <div class="note-page-head">
+          <h2 class="modal-title" id="note-title"></h2>
+          <div class="stat-sub" id="note-meta"></div>
+        </div>
+        <div id="note-editor-wrap"></div>
+        <div class="form-foot">
+          <button class="btn-primary" id="note-save" type="button">Salva</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Calendario view: aggrega Colloqui e Appuntamenti (non le Lezioni,
          che hanno la propria vista Settimana/Calendario) con viste
          Settimana/Mese/Agenda, filtrabili per tipo tramite la legenda -->
@@ -1197,7 +1221,7 @@
 
 <!-- ── Modal colloquio (nuovo/modifica) ─────────────────────────────── -->
 <div class="modal-overlay hidden" id="colloquio-overlay">
-  <div class="modal-box modal-box-xl">
+  <div class="modal-box modal-box-sm">
     <div class="modal-header">
       <h2 class="modal-title" id="colloquio-title">Nuovo colloquio</h2>
       <button class="btn-icon modal-close" id="colloquio-close" aria-label="Chiudi">
@@ -1215,7 +1239,7 @@
 
 <!-- ── Modal appuntamento (nuovo/modifica): collegio, consiglio di classe, incontro ── -->
 <div class="modal-overlay hidden" id="appuntamento-overlay">
-  <div class="modal-box modal-box-xl">
+  <div class="modal-box modal-box-sm">
     <div class="modal-header">
       <h2 class="modal-title" id="appuntamento-title">Nuovo appuntamento</h2>
       <button class="btn-icon modal-close" id="appuntamento-close" aria-label="Chiudi">

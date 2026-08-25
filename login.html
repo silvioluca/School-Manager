@@ -133,11 +133,21 @@
       // (vedi gcal.js): richiesto già al login, così l'access token è pronto
       // dal primo avvio invece di dover riconnettere separatamente dall'app.
       provider.addScope('https://www.googleapis.com/auth/calendar.events');
+      // Forza la schermata di consenso completa: senza questo, se Google
+      // ritiene il login "già fidato" può saltarla e non restituire alcun
+      // access token nella credential (causa nota di "nessun permesso
+      // ottenuto" anche quando il login stesso riesce).
+      provider.setCustomParameters({ prompt: 'consent' });
       const result = await firebase.auth().signInWithPopup(provider);
       const { user } = result;
       if (smIsAllowed(user)) {
         const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-        GCal.setToken(credential?.accessToken || '');
+        // credential.accessToken è il percorso documentato; su alcune
+        // versioni dell'SDK compat il token può comparire solo nel payload
+        // interno _tokenResponse — usato come ripiego, non come primario.
+        const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
+        console.log('[gcal] login: credential presente =', !!credential, '— accessToken ottenuto =', !!token);
+        GCal.setToken(token);
         window.location.replace('app.html');
       } else {
         showError(`Account non autorizzato: ${user.email}`);

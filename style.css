@@ -406,12 +406,14 @@ header {
   box-shadow: 0 24px 64px rgba(0,0,0,0.5);
 }
 .modal-box-sm { max-width: 440px; }
-/* Modal "a schermo" (Colloqui/Appuntamenti): stessa struttura di .modal-box,
-   ma molto più grande per lasciare spazio all'editor di testo ricco delle note */
-.modal-box-xl { max-width: 960px; width: 100%; height: 88vh; }
-.modal-box-xl #colloquio-body, .modal-box-xl #appuntamento-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.modal-box-xl .modal-body-flex { flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 14px; }
-.modal-box-xl .rt-editor { flex: 1; min-height: 160px; }
+
+/* ── Pagina Nota (Colloqui/Appuntamenti): non un modale — sostituisce il main
+   come "Scheda alunno"/"Scheda classe", per lasciare spazio all'editor di
+   testo ricco. I campi data/ora/ecc. restano nel modale compatto sopra
+   (icona matita), volutamente separato da qui ── */
+.note-page-panel { display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - var(--header-height) - 150px); }
+.note-page-head { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--border-idle); }
+.note-page-panel .rt-editor { flex: 1; min-height: 320px; }
 
 /* ── Editor di testo ricco (titolo, elenchi puntati/numerati, checkbox) ──
    stile Notion: contenteditable + document.execCommand (deprecato ma pieno
