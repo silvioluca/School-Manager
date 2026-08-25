@@ -1,19 +1,32 @@
 // ── Sincronizzazione automatica con Google Calendar ──────────────────────
 // Colloqui e Appuntamenti (non le Lezioni) vengono creati/aggiornati/eliminati
-// anche sul calendario "primary" dell'utente Google, usando l'access token
-// OAuth (scope https://www.googleapis.com/auth/calendar.events) ottenuto al
-// login — vedi login.html per la cattura del token dopo signInWithPopup.
+// anche sul calendario "primary" dell'utente Google, usando un access token
+// OAuth (scope https://www.googleapis.com/auth/calendar.events) ottenuto
+// tramite Google Identity Services (accounts.google.com/gsi/client), NON
+// tramite Firebase Auth: signInWithPopup/signInWithRedirect di Firebase per
+// questo scopo si sono rivelati inaffidabili sull'hosting di quest'app
+// (GitHub Pages invia di default Cross-Origin-Opener-Policy: same-origin,
+// che blocca la comunicazione del popup con Firebase; anche passando a
+// signInWithRedirect lo stato del redirect si perdeva al ritorno). Google
+// Identity Services è la libreria di Google pensata apposta per ottenere
+// permessi OAuth aggiuntivi in modo indipendente dal login, e gestisce
+// correttamente le policy di sicurezza moderne — vedi requestAccessToken
+// più sotto e il pulsante "Calendar" in header (app.js).
 //
-// Limite noto: l'app non ha un backend proprio (solo Firebase), quindi non
-// può rinnovare l'access token in silenzio. Il token dura circa un'ora: da
-// quel momento la sincronizzazione si ferma finché l'utente non si
-// riconnette (pulsante "Google Calendar" in header, vedi app.js). I dati
-// restano comunque sempre salvati su Firestore indipendentemente dall'esito
-// della sync — un fallimento verso Calendar non fa mai perdere il salvataggio
-// locale.
+// Limite noto: l'access token dura circa un'ora e non c'è un backend che
+// possa rinnovarlo in silenzio — da quel momento la sincronizzazione si
+// ferma finché l'utente non si riconnette. I dati restano comunque sempre
+// salvati su Firestore indipendentemente dall'esito della sync — un
+// fallimento verso Calendar non fa mai perdere il salvataggio locale.
 const GCal = (() => {
   const TOKEN_KEY = 'sm-gcal-token';
   const API = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  // Client ID OAuth "Web application" del progetto Google Cloud collegato a
+  // Firebase (Credenziali → OAuth 2.0 Client IDs — spesso già presente come
+  // "Web client (auto created by Google Service)"; verificare che
+  // https://<tuo-dominio> sia elencato tra le "Authorized JavaScript
+  // origins"). Vedi le istruzioni fornite per trovarlo/crearlo.
+  const GCAL_CLIENT_ID = '874485472320-ues39pid1t026sdhj494euv2m5g7lo8n.apps.googleusercontent.com';
 
   function getToken() { try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } }
   function hasToken() { return !!getToken(); }
@@ -100,5 +113,45 @@ const GCal = (() => {
     return { ok: true };
   }
 
-  return { getToken, setToken, hasToken, onStatusChange, upsertEvent, deleteEvent, verify };
+  // ── Ottenimento del permesso via Google Identity Services ───────────────
+  // Il client va creato una sola volta (initTokenClient); i due callback
+  // restano fissi e smistano l'esito al resolver "in corso" tenuto in
+  // _pendingResolve, così ogni chiamata a requestAccessToken() può
+  // restituire una Promise pur riusando lo stesso client.
+  let _tokenClient = null;
+  let _pendingResolve = null;
+  function _getTokenClient() {
+    if (_tokenClient) return _tokenClient;
+    if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) return null;
+    _tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GCAL_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/calendar.events',
+      callback: resp => {
+        if (!_pendingResolve) return;
+        const resolve = _pendingResolve; _pendingResolve = null;
+        if (resp && resp.access_token) { setToken(resp.access_token); resolve({ ok: true }); }
+        else resolve({ ok: false, reason: (resp && resp.error) || 'no-token' });
+      },
+      error_callback: err => {
+        if (!_pendingResolve) return;
+        const resolve = _pendingResolve; _pendingResolve = null;
+        resolve({ ok: false, reason: (err && err.type) || 'error' });
+      },
+    });
+    return _tokenClient;
+  }
+  // Apre il popup di consenso Google (gestito da Google Identity Services,
+  // non da Firebase) e risolve quando arriva una risposta — mai
+  // un'eccezione. prompt:'consent' forza la schermata completa ogni volta,
+  // per non rischiare un consenso "silenzioso" senza token restituito.
+  function requestAccessToken() {
+    return new Promise(resolve => {
+      const client = _getTokenClient();
+      if (!client) { resolve({ ok: false, reason: 'gis-not-loaded' }); return; }
+      _pendingResolve = resolve;
+      client.requestAccessToken({ prompt: 'consent' });
+    });
+  }
+
+  return { getToken, setToken, hasToken, onStatusChange, upsertEvent, deleteEvent, verify, requestAccessToken };
 })();

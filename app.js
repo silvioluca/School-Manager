@@ -6412,13 +6412,9 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 });
 
 // ── Stato Google Calendar in header: l'access token OAuth (scope
-//    calendar.events, catturato al login) dura circa un'ora — quando manca
-//    o è scaduto il pulsante permette di riconnettersi senza rifare
-//    l'accesso completo, tramite reauthenticateWithRedirect (non un popup:
-//    GitHub Pages invia di default l'header Cross-Origin-Opener-Policy:
-//    same-origin — non personalizzabile su GitHub Pages — che rompe la
-//    comunicazione popup↔finestra principale usata da *WithPopup, causando
-//    "nessun permesso ottenuto" anche a login riuscito). Lo stato mostrato
+//    calendar.events, ottenuto tramite Google Identity Services — vedi
+//    gcal.js, non più Firebase Auth) dura circa un'ora — quando manca o è
+//    scaduto il pulsante permette di riconnettersi. Lo stato mostrato
 //    riflette una verifica reale (GCal.verify, una chiamata di prova
 //    all'API), non solo "il token è presente": così l'icona non dice
 //    "connesso" mentre la sync fallisce in silenzio a ogni salvataggio.
@@ -6437,67 +6433,42 @@ function gcalErrorMessage(check) {
     return 'Permesso ottenuto, ma Google ha rifiutato la richiesta verso Calendar.\n\n'
       + 'Causa più probabile: la "Google Calendar API" non è abilitata nel progetto Google Cloud collegato a questo account Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Libreria", cerca "Google Calendar API" e abilitala per il progetto, poi riprova a collegare.';
   }
-  if (check.reason === 'no-token') {
-    return 'Il login è riuscito, ma Google non ha restituito alcun permesso di accesso a Calendar.\n\n'
-      + 'Causa più probabile: lo scope "calendar.events" non è registrato nella schermata di consenso OAuth del progetto Google Cloud collegato a Firebase — vai su console.cloud.google.com, sezione "API e servizi" → "Schermata consenso OAuth" → "Ambiti" ("Scopes"), aggiungi ".../auth/calendar.events" e salva, poi riprova a collegare.\n\n'
-      + 'Se invece durante il popup non ti è stata mostrata alcuna richiesta di permesso per Calendar, è lo stesso identico problema.';
+  if (check.reason === 'no-token' || check.reason === 'gis-not-loaded') {
+    return check.reason === 'gis-not-loaded'
+      ? 'La libreria di Google (accounts.google.com/gsi/client) non è ancora pronta. Attendi qualche secondo e riprova.'
+      : 'Google non ha restituito alcun permesso di accesso a Calendar.\n\nCausa più probabile: il Client ID OAuth configurato in gcal.js non è corretto, oppure il dominio di questo sito non è tra le "Authorized JavaScript origins" del client OAuth — controlla su console.cloud.google.com → API e servizi → Credenziali.';
   }
   if (check.reason === 'unauthorized') return 'Il permesso è scaduto o non valido. Riprova a collegare.';
   if (check.reason === 'network') return 'Google Calendar non è raggiungibile in questo momento (rete). Riprova più tardi.';
+  if (check.reason === 'popup_closed' || check.reason === 'popup_closed_by_user') return null; // annullato dall'utente: nessun avviso
   return `Google Calendar non risponde correttamente (${check.reason}). Riprova più tardi.`;
 }
 document.getElementById('gcal-status').addEventListener('click', async () => {
-  const user = firebase.auth().currentUser;
-  if (!user) return;
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.addScope('https://www.googleapis.com/auth/calendar.events');
-    // Forza la schermata di consenso completa: senza questo, se Google
-    // ritiene la sessione "già fidata" può saltarla e non restituire alcun
-    // access token nella credential.
-    provider.setCustomParameters({ prompt: 'consent' });
-    await user.reauthenticateWithRedirect(provider);
-    // Da qui la pagina naviga via: il risultato si legge in
-    // handleGCalRedirectResult() al ritorno (vedi sotto).
-  } catch (e) {
-    alert('Impossibile avviare la connessione a Google Calendar: ' + (e.message || e.code || 'errore sconosciuto'));
+  const result = await GCal.requestAccessToken();
+  if (!result.ok) {
+    const msg = gcalErrorMessage(result);
+    if (msg) alert(msg);
+    return;
+  }
+  const check = await GCal.verify();
+  if (check.ok) {
+    alert('Google Calendar collegato: colloqui e appuntamenti verranno sincronizzati automaticamente.');
+  } else {
+    // Il token resta valido su un rifiuto "forbidden" (es. API non ancora
+    // abilitata lato Google Cloud): può iniziare a funzionare senza un
+    // nuovo consenso, appena risolto lato Google — non lo scarta qui.
+    if (check.reason !== 'forbidden') GCal.setToken('');
+    updateGCalStatus(false);
+    const msg = gcalErrorMessage(check);
+    if (msg) alert(msg);
   }
 });
 
-// Cattura il risultato di un eventuale redirect OAuth di ritorno (solo dalla
-// riconnessione Calendar qui sopra: il login iniziale passa da login.html e
-// arriva già con l'esito gestito). Va letto PRIMA di procedere oltre,
-// altrimenti l'access token andrebbe perso.
-async function handleGCalRedirectResult() {
-  try {
-    const result = await firebase.auth().getRedirectResult();
-    if (!result || !result.user) return;
-    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
-    console.log('[gcal] riconnessione (redirect): credential presente =', !!credential, '— accessToken ottenuto =', !!token);
-    GCal.setToken(token);
-    const check = await GCal.verify();
-    if (check.ok) {
-      alert('Google Calendar collegato: colloqui e appuntamenti verranno sincronizzati automaticamente.');
-    } else {
-      // Il token resta valido su un rifiuto "forbidden" (es. API non ancora
-      // abilitata lato Google Cloud): può iniziare a funzionare senza un
-      // nuovo consenso, appena risolto lato Google — non lo scarta qui.
-      if (check.reason !== 'forbidden') GCal.setToken('');
-      updateGCalStatus(false);
-      alert(gcalErrorMessage(check));
-    }
-  } catch (e) {
-    console.warn('[gcal] errore nel leggere il risultato del redirect', e);
-  }
-}
-
-smAuthReady.then(async user => {
+smAuthReady.then(user => {
   if (!smIsAllowed(user)) { window.location.replace('login.html'); return; }
   const av = document.getElementById('user-avatar');
   if (user.photoURL) { av.src = user.photoURL; av.classList.remove('hidden'); }
   av.title = user.email;
-  await handleGCalRedirectResult();
   updateGCalStatus(GCal.hasToken());
   // Il token può essere sopravvissuto in sessionStorage da prima ma essere nel
   // frattempo scaduto/revocato: verifica in background e corregge l'icona se

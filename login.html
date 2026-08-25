@@ -10,7 +10,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="firebase-init.js"></script>
-<script src="gcal.js"></script>
 <style>
   :root {
     --bg1: #0f0f0f;
@@ -115,60 +114,35 @@
     errEl.classList.add('visible');
   }
 
-  // Login via redirect (non popup): GitHub Pages invia di default l'header
-  // Cross-Origin-Opener-Policy: same-origin, che rompe la comunicazione
-  // popup↔finestra principale usata da signInWithPopup (Firebase non riesce
-  // più a leggere lo stato del popup né il risultato/permesso ottenuto — la
-  // console mostra "Cross-Origin-Opener-Policy policy would block the
-  // window.closed call"). GitHub Pages non permette di personalizzare gli
-  // header di risposta, quindi l'unica soluzione è evitare del tutto i
-  // popup: signInWithRedirect naviga via e poi torna qui, il risultato si
-  // legge con getRedirectResult() al ritorno.
-  async function handleRedirectResult() {
-    try {
-      const result = await firebase.auth().getRedirectResult();
-      if (!result || !result.user) return;
-      const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-      // credential.accessToken è il percorso documentato; su alcune versioni
-      // dell'SDK compat il token può comparire solo nel payload interno
-      // _tokenResponse — usato come ripiego, non come primario.
-      const token = credential?.accessToken || result?._tokenResponse?.oauthAccessToken || '';
-      console.log('[gcal] login (redirect): credential presente =', !!credential, '— accessToken ottenuto =', !!token);
-      GCal.setToken(token);
-    } catch (e) {
-      showError('Errore di accesso: ' + (e.message || e.code || 'riprova.'));
-    }
-  }
+  // Login semplice (nessuno scope Calendar qui): il permesso per Google
+  // Calendar è gestito separatamente in app.js tramite Google Identity
+  // Services (google.accounts.oauth2), non più tramite Firebase Auth — vedi
+  // gcal.js. signInWithPopup basta per il solo login/identità.
 
-  (async () => {
-    await handleRedirectResult();
-    // Già autenticato con account autorizzato (login appena completato, o
-    // sessione già valida da prima) → vai all'app
-    const user = await smAuthReady;
+  // Già autenticato con account autorizzato → vai all'app
+  smAuthReady.then(user => {
     if (smIsAllowed(user)) window.location.replace('app.html');
     else if (user) {
       showError(`Account non autorizzato: ${user.email}`);
-      await firebase.auth().signOut();
+      firebase.auth().signOut();
     }
-  })();
+  });
 
   btn.addEventListener('click', async () => {
     errEl.classList.remove('visible');
     btn.disabled = true;
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
-      // Permesso per sincronizzare Colloqui e Appuntamenti su Google Calendar
-      // (vedi gcal.js): richiesto già al login, così l'access token è pronto
-      // dal primo avvio invece di dover riconnettere separatamente dall'app.
-      provider.addScope('https://www.googleapis.com/auth/calendar.events');
-      // Forza la schermata di consenso completa: senza questo, se Google
-      // ritiene il login "già fidato" può saltarla e non restituire alcun
-      // access token nella credential.
-      provider.setCustomParameters({ prompt: 'consent' });
-      await firebase.auth().signInWithRedirect(provider);
-      // Da qui la pagina naviga via: il risultato si legge in handleRedirectResult() al ritorno.
+      const { user } = await firebase.auth().signInWithPopup(provider);
+      if (smIsAllowed(user)) {
+        window.location.replace('app.html');
+      } else {
+        showError(`Account non autorizzato: ${user.email}`);
+        await firebase.auth().signOut();
+      }
     } catch (e) {
-      showError('Errore di accesso. Riprova.');
+      if (e.code !== 'auth/popup-closed-by-user') showError('Errore di accesso. Riprova.');
+    } finally {
       btn.disabled = false;
     }
   });
