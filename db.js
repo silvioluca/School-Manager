@@ -39,7 +39,7 @@
 //                                        (giorno/ora fisso) vive invece dentro l'orario del docente
 //                                        (slot con materia "Colloqui", classe vuota).
 //   users/{uid}/packs/appt-2025_26   → { json: [ {id, tipo, data, ora, oraFine, modalita, classe,
-//                                        oggetto, note, meetLink, gcalEventId}, … ] }
+//                                        oggetto, luogo, note, meetLink, gcalEventId}, … ] }
 //                                        appuntamenti istituzionali (per anno scolastico): collegi
 //                                        docenti, consigli di classe, incontri anche pomeridiani/online.
 //                                        tipo: 'collegio' | 'consiglio' | 'incontro'; modalita: 'presenza'
@@ -585,7 +585,7 @@ const DB = (() => {
     return {
       id: uid(), tipo: a.tipo || 'incontro', data: a.data || '', ora: a.ora || '',
       oraFine: a.oraFine || '', modalita: a.modalita || 'presenza', classe: a.classe || '',
-      oggetto: a.oggetto || '', note: a.note || '', meetLink: a.meetLink || '',
+      oggetto: a.oggetto || '', luogo: a.luogo || '', note: a.note || '', meetLink: a.meetLink || '',
       // id dell'evento gemello su Google Calendar (sincronizzazione automatica,
       // vedi gcal.js): '' finché non è mai stato sincronizzato con successo
       gcalEventId: a.gcalEventId || '',

@@ -58,14 +58,18 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'alunno-detail', 'classe-detail', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'alunno-detail', 'classe-detail', 'item-note'];
 const VIEW_TITLES = {
-  dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report',
+  dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative',
-  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota',
+  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
+  'report-os': 'Report Orali/Scritti',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
-const TIPI_APPUNTAMENTO = { collegio: 'Collegio docenti', consiglio: 'Consiglio di classe', incontro: 'Incontro' };
+const TIPI_APPUNTAMENTO = {
+  collegio: 'Collegio docenti', consiglio: 'Consiglio di classe', dipartimento: 'Dipartimento',
+  glo: 'GLO', incontro: 'Incontro',
+};
 // Stati del kanban To-do, nell'ordine in cui compaiono le colonne
 const TODO_STATI = [
   { key: 'da_fare', label: 'Da fare' },
@@ -644,14 +648,15 @@ function renderView() {
   // Scheda alunno/classe e Report hanno i propri filtri dedicati: la ricerca
   // testuale lì non filtrerebbe nulla di visibile
   document.getElementById('search-wrap').classList.toggle('hidden',
-    state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
+    state.view === 'dashboard' || state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
     || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo'
-    || state.view === 'item-note');
-  document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report');
+    || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os');
+  document.getElementById('dash-toolbar').classList.toggle('hidden', state.view !== 'dashboard');
+  document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report' && state.view !== 'report-os');
   document.getElementById('filter-alunno-report').classList.toggle('hidden', state.view !== 'report');
-  // Periodo Da/A: filtro condiviso da Voti, Lezioni, Compiti e Report
-  const periodoViews = ['voti', 'lezioni', 'compiti', 'report'];
+  // Periodo Da/A: filtro condiviso da Voti, Lezioni, Compiti, Report e Report ore
+  const periodoViews = ['voti', 'lezioni', 'compiti', 'report', 'report-ore'];
   document.getElementById('filter-da').classList.toggle('hidden', !periodoViews.includes(state.view));
   document.getElementById('filter-a').classList.toggle('hidden', !periodoViews.includes(state.view));
   document.getElementById('filter-da').value = state.filtroDa;
@@ -662,7 +667,8 @@ function renderView() {
     dashboard: renderDashboard, alunni: renderAlunni, classi: renderClassi, voti: renderVoti, report: renderReport,
     lezioni: renderLezioni, compiti: renderCompiti, orario: renderOrario, verifiche: renderVerifiche, rubriche: renderRubriche,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
-    'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote,
+    'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
+    'report-os': renderReportOS,
   };
   try {
     renderers[state.view]();
@@ -679,21 +685,28 @@ function renderView() {
 // Riga compatta di una lezione/compito nei pannelli "oggi" della Dashboard.
 // Sempre l'anno scolastico reale corrente (non il filtro Anno, che serve per
 // navigare lo storico): "oggi" ha senso solo nell'anno in corso.
-function dashItemRow(l, testo, dateLabel) {
+// Riga di lezione/compito in dashboard: ora - classe (chip colorata) -
+// titolo sulla prima riga, con la chip materia spinta in fondo a destra;
+// il testo (tipicamente il compito) sotto, solo se presente.
+function dashItemRow(l, titolo, testo, oraLabel) {
   return `
     <div class="dash-item" data-id="${l.id}">
       <div class="dash-item-top">
+        ${oraLabel ? `<span class="dash-item-ora">${escHtml(oraLabel)}</span>` : ''}
+        ${l.classe ? `<span class="classe-chip" style="--cls-color:${colorOfClasse(l.classe)}">${escHtml(l.classe)}</span>` : ''}
+        <span class="dash-item-titolo">${escHtml(titolo || '—')}</span>
         ${l.materia ? `<span class="mat-chip" style="--mat-color:${colorOfMateria(l.materia)}">${escHtml(l.materia)}</span>` : ''}
-        <span class="dash-item-classe">${escHtml(l.classe || '—')}</span>
-        ${dateLabel ? `<span class="stat-sub">${escHtml(dateLabel)}</span>` : (l.ora ? `<span class="stat-sub">${escHtml(l.ora)}ª</span>` : '')}
       </div>
       ${testo ? `<div class="dash-item-text">${escHtml(testo)}</div>` : ''}
     </div>`;
 }
-function fillDashOggi(elId, items, anno, textFn, emptyText) {
+// oraLabelFn facoltativa: di default mostra il periodo ("Nª ora"), ma il
+// pannello "Compiti in scadenza oggi" la sovrascrive con la data originale
+// della lezione (può essere di giorni fa, non ha senso mostrarne il periodo)
+function fillDashOggi(elId, items, anno, titoloFn, testoFn, emptyText, oraLabelFn) {
   const el = document.getElementById(elId);
   if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">${emptyText}</p>`; return; }
-  el.innerHTML = items.map(l => dashItemRow(l, textFn(l))).join('');
+  el.innerHTML = items.map(l => dashItemRow(l, titoloFn(l), testoFn(l), oraLabelFn ? oraLabelFn(l) : (l.ora ? `${l.ora}ª` : ''))).join('');
   el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(anno, div.dataset.id)));
 }
 // Avviso proattivo: lezioni segnate come Verifica/Interrogazione da oggi in
@@ -705,6 +718,7 @@ function fillDashVerificheArrivo(elId, items, anno, emptyText) {
   const oggi = todayISO();
   el.innerHTML = items.map(l => dashItemRow(l,
     `${l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}${l.argomento ? ' · ' + l.argomento : ''}`,
+    '',
     l.data === oggi ? 'Oggi' : fmtData(l.data))).join('');
   el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(anno, div.dataset.id)));
 }
@@ -713,18 +727,23 @@ function renderDashboardOggi() {
   const anno = DB.currentAnno();
   const lez = DB.getLezioni(anno);
 
+  // Lezioni di oggi e "Compiti assegnati oggi" sono la stessa cosa (il
+  // compito è un campo della lezione, non un'entità a parte): un unico
+  // pannello, il compito compare nella riga sotto quando presente.
   const lezOggi = lez.filter(l => l.data === oggi).sort((a, b) => (+a.ora || 0) - (+b.ora || 0));
+  // "Scadenza oggi" può riguardare una lezione di un altro giorno: resta un
+  // pannello a sé, mostrando la data originale della lezione al posto del
+  // periodo (vedi oraLabelFn in fillDashOggi)
   const scadenzaOggi = lez.filter(l => l.compiti && l.scadenza === oggi);
-  const assegnatiOggi = lez.filter(l => l.compiti && l.data === oggi);
   const verificheArrivo = lez.filter(l => l.tipo && l.data >= oggi)
     .sort((a, b) => a.data === b.data ? (+a.ora || 0) - (+b.ora || 0) : a.data.localeCompare(b.data))
     .slice(0, 20);
 
-  fillDashOggi('dash-lezioni-oggi', lezOggi, anno, l => l.argomento, 'Nessuna lezione registrata per oggi.');
-  fillDashOggi('dash-compiti-scadenza-oggi', scadenzaOggi, anno, l => l.compiti, 'Nessun compito in scadenza oggi.');
-  fillDashOggi('dash-compiti-assegnati-oggi', assegnatiOggi, anno, l => l.compiti, 'Nessun compito assegnato oggi.');
+  fillDashOggi('dash-lezioni-oggi', lezOggi, anno, l => l.argomento || 'Lezione', l => l.compiti, 'Nessuna lezione registrata per oggi.');
+  fillDashOggi('dash-compiti-scadenza-oggi', scadenzaOggi, anno, l => l.argomento || 'Lezione', l => l.compiti, 'Nessun compito in scadenza oggi.', l => fmtData(l.data));
   fillDashVerificheArrivo('dash-verifiche-arrivo', verificheArrivo, anno, 'Nessuna verifica o interrogazione in programma.');
   renderDashboardTodo();
+  renderDashboardApptColloqui();
 }
 // Panel To-do in dashboard: i to-do aperti (non "fatto"), prima le scadenze
 // più vicine — clic apre direttamente la modifica dalla sezione To-do
@@ -747,8 +766,56 @@ function renderDashboardTodo() {
     openTodoModal(DB.getTodos().find(t => t.id === div.dataset.id));
   }));
 }
+// Panel "Prossimi appuntamenti e colloqui" in dashboard: entrambi i tipi
+// entro 14 giorni da oggi (inclusi), ordinati per data/ora — clic apre la
+// pagina Nota dell'appuntamento/colloquio corrispondente. Usa sempre l'anno
+// reale corrente (come renderDashboardOggi), non il filtro Anno in alto:
+// "prossimi" ha senso solo guardando avanti da oggi.
+function renderDashboardApptColloqui() {
+  const oggi = todayISO();
+  const limite = toISO(addDays(new Date(oggi + 'T00:00:00'), 14));
+  const anni = new Set([annoFromData(oggi), annoFromData(limite)].filter(Boolean));
+  const items = [];
+  anni.forEach(anno => {
+    DB.getAppuntamenti(anno).forEach(a => {
+      if (!(a.data >= oggi && a.data <= limite)) return;
+      items.push({
+        kind: 'appuntamento', anno, id: a.id, data: a.data, ora: a.ora, oraFine: a.oraFine,
+        titolo: a.oggetto || TIPI_APPUNTAMENTO[a.tipo] || a.tipo, tipoLabel: TIPI_APPUNTAMENTO[a.tipo] || a.tipo,
+      });
+    });
+    DB.getColloqui(anno).forEach(c => {
+      if (!(c.data >= oggi && c.data <= limite)) return;
+      const s = state.students.find(x => x.id === c.studenteId);
+      items.push({
+        kind: 'colloquio', anno, id: c.id, data: c.data, ora: c.ora, oraFine: '',
+        titolo: s ? `${s.cognome} ${s.nome}` : (c.partecipanti || 'Colloquio'), tipoLabel: 'Colloquio',
+      });
+    });
+  });
+  items.sort((a, b) => (a.data + (a.ora || '')).localeCompare(b.data + (b.ora || '')));
+  const el = document.getElementById('dash-appt-colloqui');
+  if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessun appuntamento o colloquio nei prossimi 14 giorni.</p>`; return; }
+  // A sinistra data - ora inizio - ora fine - titolo, a destra la chip tipo
+  // (stessa struttura .dash-item-top di Lezioni/Compiti, riusata qui)
+  el.innerHTML = items.map(it => {
+    const oraLabel = [it.ora, it.oraFine].filter(Boolean).join('–');
+    const whenLabel = [it.data === oggi ? 'Oggi' : fmtData(it.data), oraLabel].filter(Boolean).join(' · ');
+    return `
+    <div class="dash-item" data-kind="${it.kind}" data-anno="${escHtml(it.anno)}" data-id="${it.id}">
+      <div class="dash-item-top">
+        <span class="dash-item-ora">${escHtml(whenLabel)}</span>
+        <span class="dash-item-titolo">${escHtml(it.titolo)}</span>
+        <span class="mat-chip" style="--mat-color:${it.kind === 'colloquio' ? 'var(--accent-blue)' : 'var(--accent-amber)'}">${escHtml(it.tipoLabel)}</span>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () =>
+    openItemNote(div.dataset.kind, div.dataset.anno, div.dataset.id)));
+}
 
 function renderDashboard() {
+  dashInitGrid();
   const list = filtered();
   const allGrades = list.flatMap(s => gradesOf(s, state.year).map(g => g.voto));
   const media = avg(allGrades);
@@ -836,6 +903,243 @@ function drawChart(id, config) {
   if (!ctx) return;
   if (charts[id]) charts[id].destroy();
   charts[id] = new Chart(ctx, config);
+}
+
+// ── Dashboard: griglia widget trascinabile/ridimensionabile ──────────
+// Layout persistito in localStorage (preferenza di interfaccia locale,
+// come il tema — non è un dato scolastico da sincronizzare via Firestore).
+// Ogni widget ha una posizione (x,y = colonna/riga di partenza, 1-based)
+// e una dimensione (w,h in celle) sulla griglia a DASH_COLS colonne.
+// Finché l'utente non interviene, i widget restano in auto-placement
+// (solo "span" impostato via data-w/data-h); entrando in modalità
+// modifica la disposizione corrente viene "fissata" leggendo le posizioni
+// che il browser ha già risolto, così drag/resize partono da uno stato
+// esplicito e prevedibile invece che da un mix auto/manuale.
+const DASH_COLS = 4;
+const DASH_ROW_H = 90;
+const DASH_GAP = 14;
+const DASH_LAYOUT_KEY = 'sm-dashboard-layout';
+
+let dashLayout = null;   // { [widgetId]: {x,y,w,h} }
+let dashDrag = null;     // interazione drag/resize in corso, null a riposo
+
+function dashClamp(v, min, max) { return Math.min(Math.max(v, min), max); }
+
+function dashLoadLayout() {
+  try { return JSON.parse(localStorage.getItem(DASH_LAYOUT_KEY)) || {}; }
+  catch { return {}; }
+}
+function dashSaveLayout() { localStorage.setItem(DASH_LAYOUT_KEY, JSON.stringify(dashLayout || {})); }
+
+function dashWidgets() { return [...document.querySelectorAll('#dashboard-grid .dash-widget')]; }
+function dashWidgetEl(id) { return document.querySelector(`#dashboard-grid .dash-widget[data-widget-id="${id}"]`); }
+
+function dashApplyWidgetStyle(el, pos) {
+  el.style.gridColumn = `${pos.x} / span ${pos.w}`;
+  el.style.gridRow = `${pos.y} / span ${pos.h}`;
+}
+
+function dashRectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function dashOverlapsFor(id, rect) {
+  return Object.keys(dashLayout).filter(otherId => otherId !== id && dashRectsOverlap(rect, dashLayout[otherId]));
+}
+
+// Replica l'algoritmo di auto-placement di CSS Grid (sparse, riga per
+// riga) per calcolare dove finirebbe ciascun widget senza posizione
+// salvata: getComputedStyle non restituisce la riga/colonna risolta per
+// gli elementi in auto-placement (resta "auto"), quindi va ricostruita.
+function dashComputeDefaultLayout() {
+  const occupied = new Set();
+  const isFree = (x, y, w, h) => {
+    for (let cy = y; cy < y + h; cy++)
+      for (let cx = x; cx < x + w; cx++) {
+        if (cx > DASH_COLS || occupied.has(cx + ',' + cy)) return false;
+      }
+    return true;
+  };
+  const occupy = (x, y, w, h) => {
+    for (let cy = y; cy < y + h; cy++)
+      for (let cx = x; cx < x + w; cx++) occupied.add(cx + ',' + cy);
+  };
+  const layout = {};
+  dashWidgets().forEach(el => {
+    const w = parseInt(el.dataset.w, 10), h = parseInt(el.dataset.h, 10);
+    outer:
+    for (let y = 1; y < 500; y++) {
+      for (let x = 1; x <= DASH_COLS - w + 1; x++) {
+        if (isFree(x, y, w, h)) { layout[el.dataset.widgetId] = { x, y, w, h }; occupy(x, y, w, h); break outer; }
+      }
+    }
+  });
+  return layout;
+}
+
+// Combina la disposizione salvata (se presente) con quella predefinita
+// calcolata sopra, e la fissa come stile inline esplicito sui widget.
+function dashFreezeLayout() {
+  const saved = dashLoadLayout();
+  const defaults = dashComputeDefaultLayout();
+  dashLayout = {};
+  dashWidgets().forEach(el => {
+    const id = el.dataset.widgetId;
+    dashLayout[id] = saved[id] || defaults[id];
+    dashApplyWidgetStyle(el, dashLayout[id]);
+  });
+}
+
+function setDashEditMode(on) {
+  const grid = document.getElementById('dashboard-grid');
+  grid.classList.toggle('dash-edit-mode', on);
+  const btn = document.getElementById('btn-dash-edit');
+  btn.classList.toggle('active', on);
+  btn.title = on ? 'Fine personalizzazione' : 'Personalizza dashboard: sposta e ridimensiona i pannelli';
+  document.getElementById('btn-dash-reset').classList.toggle('hidden', !on);
+  if (on) dashFreezeLayout();
+}
+
+function dashResetLayout() {
+  if (!confirm('Ripristinare la disposizione predefinita dei pannelli della dashboard?')) return;
+  localStorage.removeItem(DASH_LAYOUT_KEY);
+  dashLayout = dashComputeDefaultLayout();
+  dashWidgets().forEach(el => dashApplyWidgetStyle(el, dashLayout[el.dataset.widgetId]));
+}
+
+function dashHighlightDropTarget(rect, id) {
+  const overlapIds = dashOverlapsFor(id, rect);
+  dashWidgets().forEach(w => w.classList.toggle(
+    'dash-drop-target', overlapIds.length === 1 && w.dataset.widgetId === overlapIds[0]));
+}
+
+function dashBeginInteraction(e, type, el) {
+  const grid = document.getElementById('dashboard-grid');
+  if (!grid.classList.contains('dash-edit-mode')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const handle = e.currentTarget;
+  handle.setPointerCapture(e.pointerId);
+
+  const gridRect = grid.getBoundingClientRect();
+  const colW = (gridRect.width - DASH_GAP * (DASH_COLS - 1)) / DASH_COLS;
+  const id = el.dataset.widgetId;
+  const pos = dashLayout[id];
+  const elRect = el.getBoundingClientRect();
+
+  dashDrag = {
+    type, id, el, handle, gridRect,
+    colPitch: colW + DASH_GAP, rowPitch: DASH_ROW_H + DASH_GAP,
+    origX: pos.x, origY: pos.y, origW: pos.w, origH: pos.h,
+    grabDX: e.clientX - elRect.left, grabDY: e.clientY - elRect.top,
+    startClientX: e.clientX, startClientY: e.clientY,
+    curX: pos.x, curY: pos.y, curW: pos.w, curH: pos.h,
+  };
+  el.classList.add(type === 'move' ? 'dash-dragging' : 'dash-resizing');
+
+  const onMove = ev => dashOnPointerMove(ev);
+  const onUp = ev => {
+    dashOnPointerUp(ev);
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onUp);
+  };
+  handle.addEventListener('pointermove', onMove);
+  handle.addEventListener('pointerup', onUp);
+  handle.addEventListener('pointercancel', onUp);
+}
+
+function dashOnPointerMove(e) {
+  if (!dashDrag) return;
+  const d = dashDrag;
+  const el = d.el;
+  if (d.type === 'move') {
+    const leftPx = e.clientX - d.grabDX - d.gridRect.left;
+    const topPx = e.clientY - d.grabDY - d.gridRect.top;
+    const colIdx = dashClamp(Math.round(leftPx / d.colPitch), 0, DASH_COLS - d.origW);
+    const rowIdx = Math.max(0, Math.round(topPx / d.rowPitch));
+    d.curX = colIdx + 1; d.curY = rowIdx + 1;
+    const dxCells = d.curX - d.origX, dyCells = d.curY - d.origY;
+    el.style.transform = `translate(${dxCells * d.colPitch}px, ${dyCells * d.rowPitch}px)`;
+    dashHighlightDropTarget({ x: d.curX, y: d.curY, w: d.origW, h: d.origH }, d.id);
+  } else {
+    const dCols = Math.round((e.clientX - d.startClientX) / d.colPitch);
+    const dRows = Math.round((e.clientY - d.startClientY) / d.rowPitch);
+    let newW = dashClamp(d.origW + dCols, 1, DASH_COLS - d.origX + 1);
+    let newH = dashClamp(d.origH + dRows, 1, 12);
+    // Se il rettangolo cresciuto sconfina su un altro widget, restringe la
+    // dimensione che si è allargata di più (quella "responsabile" della
+    // sovrapposizione), non sempre la larghezza: altrimenti un ingombro
+    // dovuto solo all'altezza farebbe collassare anche la larghezza.
+    while ((newW > 1 || newH > 1) &&
+           dashOverlapsFor(d.id, { x: d.origX, y: d.origY, w: newW, h: newH }).length) {
+      if (newH - d.origH >= newW - d.origW && newH > 1) newH--;
+      else if (newW > 1) newW--;
+      else newH--;
+    }
+    d.curW = newW; d.curH = newH;
+    dashLayout[d.id] = { x: d.origX, y: d.origY, w: newW, h: newH };
+    dashApplyWidgetStyle(el, dashLayout[d.id]);
+  }
+}
+
+function dashOnPointerUp() {
+  if (!dashDrag) return;
+  const d = dashDrag;
+  const el = d.el;
+  el.classList.remove('dash-dragging', 'dash-resizing');
+  el.style.transform = '';
+  dashWidgets().forEach(w => w.classList.remove('dash-drop-target'));
+
+  if (d.type === 'move') {
+    const rect = { x: d.curX, y: d.curY, w: d.origW, h: d.origH };
+    const overlapIds = dashOverlapsFor(d.id, rect);
+    if (overlapIds.length === 1) {
+      const otherId = overlapIds[0];
+      const otherPos = dashLayout[otherId];
+      const myPos = dashLayout[d.id];
+      dashLayout[otherId] = { ...otherPos, x: myPos.x, y: myPos.y };
+      dashLayout[d.id] = { ...myPos, x: rect.x, y: rect.y };
+      dashApplyWidgetStyle(dashWidgetEl(otherId), dashLayout[otherId]);
+      dashApplyWidgetStyle(el, dashLayout[d.id]);
+    } else if (overlapIds.length === 0) {
+      dashLayout[d.id] = { ...dashLayout[d.id], x: rect.x, y: rect.y };
+      dashApplyWidgetStyle(el, dashLayout[d.id]);
+    } else {
+      dashApplyWidgetStyle(el, dashLayout[d.id]); // troppe sovrapposizioni: annulla, torna alla posizione di partenza
+    }
+  }
+  dashSaveLayout();
+  dashDrag = null;
+}
+
+function dashInitGrid() {
+  const grid = document.getElementById('dashboard-grid');
+  if (!grid || grid.dataset.dashInit) return;
+  grid.dataset.dashInit = '1';
+  grid.querySelectorAll('.dash-widget-handle').forEach(handle => {
+    handle.addEventListener('pointerdown', e => dashBeginInteraction(e, 'move', handle.closest('.dash-widget')));
+  });
+  grid.querySelectorAll('.dash-widget-resize').forEach(handle => {
+    handle.addEventListener('pointerdown', e => dashBeginInteraction(e, 'resize', handle.closest('.dash-widget')));
+  });
+  document.getElementById('btn-dash-edit').addEventListener('click', () => setDashEditMode(!grid.classList.contains('dash-edit-mode')));
+  document.getElementById('btn-dash-reset').addEventListener('click', dashResetLayout);
+
+  // Applica subito la dimensione (span) di ciascun widget da data-w/data-h:
+  // senza uno "span" esplicito ogni widget occuperebbe una sola cella
+  // (comportamento di default della griglia). I widget con una posizione
+  // salvata (localStorage) la ottengono per intero, fissa; gli altri restano
+  // in auto-placement del browser, solo con la dimensione fissata — così la
+  // disposizione personalizzata resta visibile anche dopo un ricaricamento.
+  const saved = dashLoadLayout();
+  grid.querySelectorAll('.dash-widget').forEach(el => {
+    const pos = saved[el.dataset.widgetId];
+    if (pos) dashApplyWidgetStyle(el, pos);
+    else {
+      el.style.gridColumn = `span ${el.dataset.w}`;
+      el.style.gridRow = `span ${el.dataset.h}`;
+    }
+  });
 }
 
 // ── Vista Alunni ────────────────────────────────────────────────────
@@ -1185,8 +1489,32 @@ function renderClasseDetail(target = classeDetailTarget()) {
   document.getElementById('btn-classe-promuovi').classList.toggle('hidden', isAgg);
   document.getElementById('btn-classe-elimina').classList.toggle('hidden', isAgg);
 
+  renderClasseStatCards(stu, grades);
   renderClasseCharts(target, rows, grades);
   renderClasseVotiGrid(rows);
+  renderClasseVerifiche(target, stu);
+}
+
+// Alunni, voti scritti/orali, insufficienti: stessa scala (rows/grades)
+// già calcolata da classeDetailScope, nessuna interrogazione DB aggiuntiva.
+function renderClasseStatCards(stu, grades) {
+  const pdp = stu.filter(s => s.profilo === 'PDP').length;
+  const pei = stu.filter(s => s.profilo === 'PEI').length;
+  const scritti = grades.filter(g => g.tipo === 'scritto').length;
+  const orali = grades.filter(g => g.tipo === 'orale').length;
+  const insuff = grades.filter(g => g.voto < 6).length;
+  const stats = [
+    { label: 'Alunni', value: stu.length, sub: `${pdp} PDP · ${pei} PEI` },
+    { label: 'Voti scritti', value: scritti, sub: `su ${grades.length} totali` },
+    { label: 'Voti orali', value: orali, sub: `su ${grades.length} totali` },
+    { label: 'Insufficienti', value: insuff, sub: `${grades.length ? Math.round(insuff / grades.length * 100) : 0}% dei voti` },
+  ];
+  document.getElementById('cd-stat-grid').innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-value">${s.value}</div>
+      <div class="stat-sub">${escHtml(s.sub)}</div>
+    </div>`).join('');
 }
 
 // Registro voti: una riga per alunno, una colonna per ciascun voto (in ordine
@@ -1340,6 +1668,47 @@ function renderClasseCharts(target = classeDetailTarget(), rows, grades) {
     },
     options: base,
   });
+}
+
+// Lezioni segnate come Verifica/Interrogazione (l.tipo, vedi dashboard) nello
+// stesso ambito Anno/Classe della Scheda classe — non un'entità a sé, sono
+// lezioni: il click apre la lezione stessa, come nei pannelli dashboard.
+function classeDetailVerifiche(target, stu) {
+  if (target.mode === 'ambiguous') return [];
+  if (target.mode === 'single') {
+    return DB.getLezioni(target.anno).filter(l => l.tipo && l.classe === target.classe).map(l => ({ ...l, anno: target.anno }));
+  }
+  const pairs = new Set();
+  stu.forEach(s => Object.entries(s.anni || {}).forEach(([anno, v]) => {
+    if (!v.classe) return;
+    if (state.year !== 'all' && anno !== state.year) return;
+    if (state.istituto !== 'all' && DB.istitutoOf(anno, v.classe) !== state.istituto) return;
+    pairs.add(anno + '|' + v.classe);
+  }));
+  const out = [];
+  pairs.forEach(key => {
+    const [anno, classe] = key.split('|');
+    out.push(...DB.getLezioni(anno).filter(l => l.tipo && l.classe === classe).map(l => ({ ...l, anno })));
+  });
+  return out;
+}
+
+function renderClasseVerifiche(target, stu) {
+  const items = classeDetailVerifiche(target, stu)
+    .sort((a, b) => a.data === b.data ? (+a.ora || 0) - (+b.ora || 0) : b.data.localeCompare(a.data));
+  const el = document.getElementById('cd-verifiche-list');
+  if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessuna verifica o interrogazione registrata.</p>`; return; }
+  // A sinistra data - titolo, a destra la chip tipologia (stessa struttura
+  // .dash-item-top del pannello dashboard "Prossimi appuntamenti e colloqui")
+  el.innerHTML = items.map(l => `
+    <div class="dash-item" data-anno="${escHtml(l.anno)}" data-id="${l.id}">
+      <div class="dash-item-top">
+        <span class="dash-item-ora">${escHtml(fmtData(l.data))}</span>
+        <span class="dash-item-titolo">${escHtml(l.argomento || (l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'))}</span>
+        <span class="mat-chip" style="--mat-color:${l.tipo === 'verifica' ? 'var(--accent-blue)' : 'var(--accent-amber)'}">${l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}</span>
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(div.dataset.anno, div.dataset.id)));
 }
 
 document.getElementById('cm-back').addEventListener('click', () => setView('classi'));
@@ -2477,6 +2846,9 @@ function rubricaRowHtml(r) {
       <td>${escHtml(r.nome)}</td>
       <td>${r.indicatori.length} indicator${r.indicatori.length === 1 ? 'e' : 'i'}</td>
       <td class="vt-actions">
+        <button class="grade-meet" data-pdf-rub="${r.id}" title="Scarica PDF">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
         <button class="grade-edit" data-edit-rub="${r.id}" title="Modifica">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
@@ -2516,7 +2888,7 @@ function renderRubricheElenco(unsortedList) {
   </table>`;
 
   wrap.querySelectorAll('tbody tr').forEach(row => row.addEventListener('click', e => {
-    if (e.target.closest('[data-edit-rub]') || e.target.closest('[data-rm-rub]')) return;
+    if (e.target.closest('[data-edit-rub]') || e.target.closest('[data-rm-rub]') || e.target.closest('[data-pdf-rub]')) return;
     const id = row.dataset.id;
     if (state.rubricheSelected.has(id)) state.rubricheSelected.delete(id);
     else state.rubricheSelected.add(id);
@@ -2578,6 +2950,9 @@ function renderRubriche() {
       <div class="rub-card-head">
         <h3>${escHtml(r.nome)}</h3>
         <div class="modal-actions">
+          <button class="btn-icon" data-pdf-rub="${r.id}" title="Scarica PDF">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="btn-icon" data-edit-rub="${r.id}" title="Modifica">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
@@ -2596,6 +2971,7 @@ function renderRubriche() {
       </div>
     </div>`).join('');
 
+  document.querySelectorAll('[data-pdf-rub]').forEach(b => b.addEventListener('click', () => exportRubricaPDF(list.find(r => r.id === b.dataset.pdfRub))));
   document.querySelectorAll('[data-edit-rub]').forEach(b => b.addEventListener('click', () => openRubricaModal(list.find(r => r.id === b.dataset.editRub))));
   document.querySelectorAll('[data-rm-rub]').forEach(b => b.addEventListener('click', async () => {
     const r = list.find(x => x.id === b.dataset.rmRub);
@@ -2605,6 +2981,44 @@ function renderRubriche() {
       renderRubriche();
     } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
   }));
+}
+// Scarica una rubrica come PDF: una tabella per indicatore (Punteggio /
+// Livello / Descrizione), con intestazione nome+range — mostra i livelli
+// descrittivi (assenti dalla vista a card, che riporta solo il range) perché
+// sono il contenuto utile da stampare/consultare durante una valutazione.
+function exportRubricaPDF(r) {
+  if (!r) return;
+  if (!window.jspdf) { alert('Libreria PDF non caricata (ricarica la pagina).'); return; }
+  const doc = new jspdf.jsPDF();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFontSize(16);
+  doc.text(r.nome || 'Rubrica valutativa', 14, 16);
+  let y = 24;
+  r.indicatori.forEach(ind => {
+    if (y > pageH - 40) { doc.addPage(); y = 16; }
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text(`${ind.nome || 'Indicatore'} (${fmt(ind.min)}–${fmt(ind.max)}${ind.min > 0 ? ', min non 0' : ''})`, 14, y);
+    const livelli = [...(ind.livelli || [])].sort((a, b) => (a.numero ?? 0) - (b.numero ?? 0));
+    if (!livelli.length) {
+      doc.setFontSize(9);
+      doc.setTextColor(140);
+      doc.text('Nessun livello descrittivo definito.', 14, y + 6);
+      y += 16;
+      return;
+    }
+    doc.autoTable({
+      startY: y + 4,
+      head: [['Punteggio', 'Livello', 'Descrizione']],
+      body: livelli.map(l => [fmt(l.numero), l.label || '', l.descrizione || '']),
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      headStyles: { fillColor: [91, 155, 255] },
+      columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 35 } },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  });
+  doc.save(`rubrica-${(r.nome || 'valutativa').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.pdf`);
 }
 
 // ── Modal rubrica: indicatori/livelli dinamici, editati su una copia di
@@ -3388,6 +3802,7 @@ function renderAppuntamenti() {
             <td>${escHtml(TIPI_APPUNTAMENTO[a.tipo] || a.tipo)}</td>
             <td>${a.modalita === 'online' ? 'Online' : 'In presenza'}</td>
             <td>${escHtml(a.classe || '—')}</td>
+            <td class="col-hide-m">${escHtml(a.luogo || '—')}</td>
             <td class="name-open" data-anno="${escHtml(anno)}" data-id="${a.id}" title="${escHtml([oggetto, note].filter(Boolean).join(' — '))}">${escHtml(oggettoShown)}</td>
             <td class="vt-actions">
               ${a.meetLink ? `<a class="grade-meet" href="${escHtml(a.meetLink)}" target="_blank" rel="noopener" title="Apri link Meet" onclick="event.stopPropagation()">
@@ -3404,7 +3819,7 @@ function renderAppuntamenti() {
   };
   const wrap = document.getElementById('appuntamenti-wrap');
   const panel = wrap.closest('.table-panel');
-  const thead = `<th></th><th>Data</th><th>Ora</th><th>Tipo</th><th>Modalità</th><th>Classe</th><th>Oggetto</th><th></th>`;
+  const thead = `<th></th><th>Data</th><th>Ora</th><th>Tipo</th><th>Modalità</th><th>Classe</th><th class="col-hide-m">Luogo</th><th>Oggetto</th><th></th>`;
   const visibleKeys = new Set(rows.map(({ anno, a }) => anno + '|' + a.id));
   [...state.appuntamentiSelected].forEach(k => { if (!visibleKeys.has(k)) state.appuntamentiSelected.delete(k); });
   updateAppuntamentiBulkBar();
@@ -3492,7 +3907,10 @@ function appuntamentoFormBody(a) {
         <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
       </label>
     </div>
-    <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>`;
+    <div class="vf-row">
+      <label class="vf-label">Luogo<input class="vf-input" id="ap-luogo" placeholder="es. Aula magna, Sala docenti" value="${escHtml(a.luogo || '')}"/></label>
+      <label class="vf-label">Link Meet<input type="url" class="vf-input" id="ap-meet" placeholder="https://meet.google.com/…" value="${escHtml(a.meetLink || '')}"/></label>
+    </div>`;
 }
 let appuntamentoCtx = null;
 function openAppuntamento(anno, id) {
@@ -3525,7 +3943,7 @@ async function syncAppuntamentoToGCal(anno, id, attrs, prevGcalEventId) {
     title: (TIPI_APPUNTAMENTO[attrs.tipo] || attrs.tipo) + (attrs.oggetto ? ' · ' + attrs.oggetto : ''),
     dateISO: attrs.data, startTime: attrs.ora, endTime: attrs.oraFine,
     description: [attrs.classe && `Classe: ${attrs.classe}`, attrs.modalita === 'online' ? 'Online' : 'In presenza', richToPlainText(attrs.note)].filter(Boolean).join('\n'),
-    location: attrs.meetLink,
+    location: attrs.modalita === 'online' ? (attrs.meetLink || attrs.luogo) : (attrs.luogo || attrs.meetLink),
   });
   if (gcalEventId && gcalEventId !== prevGcalEventId) {
     await DB.updateAppuntamento(anno, id, { gcalEventId });
@@ -3539,7 +3957,7 @@ document.getElementById('appuntamento-save').addEventListener('click', async () 
   const attrs = {
     tipo: val('ap-tipo') || 'incontro', data, ora: val('ap-ora'), oraFine: val('ap-ora-fine'),
     modalita: val('ap-modalita') || 'presenza', classe: val('ap-classe'), oggetto: val('ap-oggetto'),
-    meetLink: val('ap-meet'),
+    luogo: val('ap-luogo'), meetLink: val('ap-meet'),
   };
   const anno = annoFromData(data);
   try {
@@ -3618,7 +4036,7 @@ function renderItemNote() {
     meta = ['Colloquio', fmtData(rec.data), rec.ora, s ? classeOf(s, ctx.anno) : ''].filter(Boolean).join(' · ');
   } else {
     title = rec.oggetto || TIPI_APPUNTAMENTO[rec.tipo] || rec.tipo;
-    meta = [TIPI_APPUNTAMENTO[rec.tipo] || rec.tipo, fmtData(rec.data), rec.oraFine ? `${rec.ora || '—'}–${rec.oraFine}` : rec.ora].filter(Boolean).join(' · ');
+    meta = [TIPI_APPUNTAMENTO[rec.tipo] || rec.tipo, fmtData(rec.data), rec.oraFine ? `${rec.ora || '—'}–${rec.oraFine}` : rec.ora, rec.luogo].filter(Boolean).join(' · ');
   }
   document.getElementById('note-title').textContent = title;
   document.getElementById('note-meta').textContent = meta;
@@ -5044,15 +5462,21 @@ function reportRowsSorted() {
   });
 }
 
-function renderReport() {
+// Riusata da Report Voti e Report Orali/Scritti: entrambi condividono lo
+// stesso <select id="filter-materia">/state.reportMateria, popolato dalle
+// materie che compaiono davvero nei voti (non dal registro materie per
+// classe) filtrate per l'Anno corrente.
+function populateReportMateriaSelect() {
   const selM = document.getElementById('filter-materia');
-  const selA = document.getElementById('filter-alunno-report');
-
   const materie = [...new Set(state.students.flatMap(s => gradesOf(s, state.year).map(g => g.materia)))].sort();
   const matOpts = ['all', ...materie];
   if (!matOpts.includes(state.reportMateria)) state.reportMateria = 'all';
   selM.innerHTML = matOpts.map(m =>
     `<option value="${escHtml(m)}" ${state.reportMateria === m ? 'selected' : ''}>${m === 'all' ? 'Tutte le materie' : escHtml(m)}</option>`).join('');
+}
+function renderReport() {
+  const selA = document.getElementById('filter-alunno-report');
+  populateReportMateriaSelect();
 
   const alunni = filteredNoSearch().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
   const alunniIds = new Set(alunni.map(a => a.id));
@@ -5101,7 +5525,10 @@ function renderReport() {
 
 document.getElementById('filter-materia').addEventListener('change', e => {
   state.reportMateria = e.target.value;
-  renderReport();
+  // Condiviso da Report Voti e Report Orali/Scritti: passa dal dispatcher
+  // generico invece di richiamare un renderer fisso, così re-invoca quello
+  // giusto in base alla view attualmente aperta.
+  renderView();
 });
 document.getElementById('filter-alunno-report').addEventListener('change', e => {
   state.reportAlunno = e.target.value;
@@ -5117,6 +5544,19 @@ document.getElementById('filter-a').addEventListener('change', e => {
 });
 
 // Descrizione dei filtri attivi, usata sia nel nome file che nell'intestazione PDF
+// Filtri di base condivisi da tutti i report (Anno/Istituto/Classe/Periodo):
+// riusata sia da Report Voti (che vi aggiunge Materia/Alunno) sia dai PDF di
+// Report ore e Report Orali/Scritti, così ognuno mostra solo i propri filtri
+// realmente attivi invece di ereditare per sbaglio uno stato lasciato da
+// un'altra vista (es. state.reportMateria impostato mentre si era su Report Voti).
+function baseFilterSummary() {
+  const parts = [];
+  if (state.year !== 'all') parts.push(state.year);
+  if (state.istituto !== 'all') parts.push(state.istituto);
+  if (state.klass !== 'all') parts.push(state.klass);
+  if (state.filtroDa || state.filtroA) parts.push(`dal ${state.filtroDa ? fmtData(state.filtroDa) : '…'} al ${state.filtroA ? fmtData(state.filtroA) : '…'}`);
+  return parts;
+}
 function reportFilterSummary() {
   const parts = [];
   if (state.year !== 'all') parts.push(state.year);
@@ -5167,6 +5607,243 @@ document.getElementById('btn-report-pdf').addEventListener('click', () => {
   });
 
   doc.save(`report-voti-${todayISO()}.pdf`);
+});
+
+// ── Report Orali/Scritti: un alunno per riga, voti orali/scritti e le
+//    relative medie, per UNA singola Materia + Classe — entrambe
+//    obbligatorie (niente "Tutte le materie/classi": ha senso solo su una
+//    combinazione precisa, altrimenti le colonne mescolerebbero materie
+//    diverse). Stesso schema di ambiguità di classeDetailTarget(): una
+//    classe con Anno = "Tutti gli anni" può indicare coorti diverse.
+function reportOSTarget() {
+  if (state.klass === 'all' || state.reportMateria === 'all') return { mode: 'missing' };
+  if (state.year === 'all') return { mode: 'ambiguous' };
+  return { mode: 'ready', anno: state.year, classe: state.klass, materia: state.reportMateria };
+}
+function renderReportOS() {
+  populateReportMateriaSelect();
+  const wrap = document.getElementById('report-os-wrap');
+  const panel = wrap.closest('.table-panel');
+  const msgEl = document.getElementById('report-os-message');
+  const countEl = document.getElementById('report-os-count');
+  const target = reportOSTarget();
+  if (target.mode !== 'ready') {
+    panel.classList.add('hidden');
+    msgEl.classList.remove('hidden');
+    msgEl.textContent = target.mode === 'ambiguous'
+      ? 'La classe selezionata esiste in più anni scolastici: scegli anche un Anno specifico nei filtri in alto per generare il report.'
+      : 'Seleziona una Materia e una Classe specifiche nei filtri in alto per generare il report.';
+    countEl.textContent = '';
+    return;
+  }
+  msgEl.classList.add('hidden');
+  panel.classList.remove('hidden');
+  const { anno, classe, materia } = target;
+
+  const studenti = filteredNoSearch().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+  countEl.textContent = `${studenti.length} alunn${studenti.length === 1 ? 'o' : 'i'} · ${materia} · ${classe}`;
+
+  const thead = `<th>Alunno</th><th>Voti orali</th><th>Media orali</th><th>Voti scritti</th><th>Media scritti</th><th>Media generale</th>`;
+  wrap.innerHTML = studenti.length
+    ? `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${studenti.map(s => reportOSRowHtml(s, anno, materia)).join('')}</tbody></table>`
+    : '';
+  if (!studenti.length) { panel.classList.add('hidden'); msgEl.classList.remove('hidden'); msgEl.textContent = 'Nessun alunno in questa classe con i filtri correnti.'; }
+}
+// Voti orali/scritti + medie di un alunno per una materia: calcolo condiviso
+// dalla riga HTML e dall'export PDF, così non possono disallinearsi.
+function reportOSGrades(s, anno, materia) {
+  const voti = gradesOf(s, anno).filter(g => g.materia === materia);
+  const orali = voti.filter(g => g.tipo === 'orale').sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  const scritti = voti.filter(g => g.tipo !== 'orale').sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  return {
+    orali, scritti,
+    mediaOrali: avg(orali.map(g => g.voto)),
+    mediaScritti: avg(scritti.map(g => g.voto)),
+    mediaGenerale: avg(voti.map(g => g.voto)),
+  };
+}
+function reportOSRowHtml(s, anno, materia) {
+  const { orali, scritti, mediaOrali, mediaScritti, mediaGenerale } = reportOSGrades(s, anno, materia);
+  return `<tr>
+      <td>${escHtml(s.cognome)} ${escHtml(s.nome)}</td>
+      <td>${orali.length ? escHtml(orali.map(g => fmt(g.voto)).join(', ')) : '–'}</td>
+      <td class="vt-mono ${gradeClass(mediaOrali)}">${fmt(mediaOrali)}</td>
+      <td>${scritti.length ? escHtml(scritti.map(g => fmt(g.voto)).join(', ')) : '–'}</td>
+      <td class="vt-mono ${gradeClass(mediaScritti)}">${fmt(mediaScritti)}</td>
+      <td class="vt-mono ${gradeClass(mediaGenerale)}"><strong>${fmt(mediaGenerale)}</strong></td>
+    </tr>`;
+}
+document.getElementById('btn-report-os-pdf').addEventListener('click', () => {
+  if (!window.jspdf) { alert('Libreria PDF non caricata (ricarica la pagina).'); return; }
+  const target = reportOSTarget();
+  if (target.mode !== 'ready') return;
+  const { anno, classe, materia } = target;
+  const studenti = filteredNoSearch().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+  if (!studenti.length) return;
+
+  const doc = new jspdf.jsPDF();
+  doc.setFontSize(14);
+  doc.text('Report Orali/Scritti', 14, 15);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`${materia} · ${classe} · ${anno}`, 14, 21);
+  doc.autoTable({
+    startY: 27,
+    head: [['Alunno', 'Voti orali', 'Media orali', 'Voti scritti', 'Media scritti', 'Media generale']],
+    body: studenti.map(s => {
+      const { orali, scritti, mediaOrali, mediaScritti, mediaGenerale } = reportOSGrades(s, anno, materia);
+      return [
+        `${s.cognome} ${s.nome}`,
+        orali.length ? orali.map(g => fmt(g.voto)).join(', ') : '–', fmt(mediaOrali),
+        scritti.length ? scritti.map(g => fmt(g.voto)).join(', ') : '–', fmt(mediaScritti),
+        fmt(mediaGenerale),
+      ];
+    }),
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    headStyles: { fillColor: [91, 155, 255] },
+  });
+  doc.save(`report-orali-scritti-${classe}-${materia}-${todayISO()}.pdf`.replace(/\s+/g, '_'));
+});
+
+// Conteggio grezzo righe × colonne, condiviso dal rendering HTML (pivotTableHtml)
+// e dall'export PDF (pivotAutoTablePDF) di Report ore, così le due versioni
+// non possono disallinearsi tra loro.
+function pivotData(items, rowKeyFn, colKeyFn) {
+  const rowKeys = new Set(), colKeys = new Set();
+  const counts = {};
+  items.forEach(item => {
+    const r = rowKeyFn(item) || '—', c = colKeyFn(item) || '—';
+    rowKeys.add(r); colKeys.add(c);
+    const key = r + '|' + c;
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return { rowsArr: [...rowKeys].sort(), colsArr: [...colKeys].sort(), counts };
+}
+// Costruisce una tabella pivot (righe × colonne → conteggio), con totali di
+// riga/colonna — riusata da Report ore sia per le lezioni (Classe × Materia)
+// sia per appuntamenti+colloqui (Tipo × Classe).
+function pivotTableHtml(items, rowKeyFn, colKeyFn, rowLabel) {
+  const { rowsArr, colsArr, counts } = pivotData(items, rowKeyFn, colKeyFn);
+  const thead = `<th>${escHtml(rowLabel)}</th>${colsArr.map(c => `<th class="vt-mono">${escHtml(c)}</th>`).join('')}<th class="vt-mono">Totale</th>`;
+  const bodyRows = rowsArr.map(r => {
+    let tot = 0;
+    const cells = colsArr.map(c => {
+      const n = counts[r + '|' + c] || 0;
+      tot += n;
+      return `<td class="vt-mono">${n || '–'}</td>`;
+    }).join('');
+    return `<tr><td>${escHtml(r)}</td>${cells}<td class="vt-mono"><strong>${tot}</strong></td></tr>`;
+  }).join('');
+  const totRow = `<tr><td><strong>Totale</strong></td>${colsArr.map(c => {
+    const n = rowsArr.reduce((s, r) => s + (counts[r + '|' + c] || 0), 0);
+    return `<td class="vt-mono"><strong>${n}</strong></td>`;
+  }).join('')}<td class="vt-mono"><strong>${items.length}</strong></td></tr>`;
+  return `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${bodyRows}${totRow}</tbody></table>`;
+}
+// Stessa tabella pivot, aggiunta a un jsPDF esistente con autoTable a partire
+// da startY. Ritorna la Y successiva, per poter incatenare più tabelle.
+function pivotAutoTablePDF(doc, items, rowKeyFn, colKeyFn, rowLabel, startY) {
+  const { rowsArr, colsArr, counts } = pivotData(items, rowKeyFn, colKeyFn);
+  const body = rowsArr.map(r => {
+    let tot = 0;
+    const cells = colsArr.map(c => { const n = counts[r + '|' + c] || 0; tot += n; return n || '–'; });
+    return [r, ...cells, tot];
+  });
+  body.push(['Totale', ...colsArr.map(c => rowsArr.reduce((s, r) => s + (counts[r + '|' + c] || 0), 0)), items.length]);
+  doc.autoTable({
+    startY,
+    head: [[rowLabel, ...colsArr, 'Totale']],
+    body,
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    headStyles: { fillColor: [91, 155, 255] },
+    margin: { left: 14, right: 14 },
+  });
+  return doc.lastAutoTable.finalY + 10;
+}
+
+// Appuntamenti + colloqui svolti (data passata), stessi filtri Anno/Classe/
+// Periodo di tutto il resto di Report ore. Normalizzati in un'unica lista
+// {tipo, classe} così finiscono nella stessa pivot Tipo × Classe: la classe
+// di un colloquio non è un campo diretto ma si ricava dall'alunno.
+function reportOreInterazioniItems() {
+  const oggi = todayISO();
+  const inPeriodo = data => data && data < oggi
+    && (!state.filtroDa || data >= state.filtroDa) && (!state.filtroA || data <= state.filtroA);
+  const items = [];
+  const anniA = state.year !== 'all' ? [state.year] : [...new Set([...allYears(), ...DB.getAppuntamentiAnni()])];
+  anniA.forEach(anno => DB.getAppuntamenti(anno).forEach(a => {
+    if (!inPeriodo(a.data)) return;
+    if (state.klass !== 'all' && a.classe !== state.klass) return;
+    items.push({ tipo: TIPI_APPUNTAMENTO[a.tipo] || a.tipo, classe: a.classe || '' });
+  }));
+  const anniC = state.year !== 'all' ? [state.year] : [...new Set([...allYears(), ...DB.getColloquiAnni()])];
+  anniC.forEach(anno => DB.getColloqui(anno).forEach(c => {
+    if (!inPeriodo(c.data)) return;
+    const s = state.students.find(x => x.id === c.studenteId);
+    const classe = s ? classeOf(s, anno) : '';
+    if (state.klass !== 'all' && classe !== state.klass) return;
+    items.push({ tipo: 'Colloquio', classe: classe || '' });
+  }));
+  return items;
+}
+
+// ── Report ore: lezioni svolte per classe/materia + appuntamenti/colloqui
+//    svolti per tipo/classe — entrambe tabelle pivot. Rispetta gli stessi
+//    filtri di Voti/Lezioni (Anno, Istituto, Classe, Periodo Da/A in alto):
+//    riusa lezioniRows() così i due report restano sempre coerenti.
+function renderReportOre() {
+  const lezRows = lezioniRows();
+  document.getElementById('report-ore-count').textContent = `${lezRows.length} or${lezRows.length === 1 ? 'a' : 'e'} svolt${lezRows.length === 1 ? 'a' : 'e'}`;
+  document.getElementById('report-ore-empty').classList.toggle('hidden', !!lezRows.length);
+  const wrap = document.getElementById('report-ore-wrap');
+  const panel = wrap.closest('.table-panel');
+  if (!lezRows.length) {
+    wrap.innerHTML = ''; panel.classList.add('hidden');
+  } else {
+    panel.classList.remove('hidden');
+    wrap.innerHTML = pivotTableHtml(lezRows.map(({ l }) => l), l => l.classe, l => l.materia, 'Classe');
+  }
+
+  const interazioni = reportOreInterazioniItems();
+  document.getElementById('report-ore-appt-count').textContent = `${interazioni.length} tra appuntament${interazioni.length === 1 ? 'o' : 'i'} e colloqui svolti`;
+  document.getElementById('report-ore-appt-empty').classList.toggle('hidden', !!interazioni.length);
+  const apptWrap = document.getElementById('report-ore-appt-wrap');
+  const apptPanel = apptWrap.closest('.table-panel');
+  if (!interazioni.length) {
+    apptWrap.innerHTML = ''; apptPanel.classList.add('hidden');
+  } else {
+    apptPanel.classList.remove('hidden');
+    apptWrap.innerHTML = pivotTableHtml(interazioni, i => i.tipo, i => i.classe, 'Tipo');
+  }
+}
+document.getElementById('btn-report-ore-pdf').addEventListener('click', () => {
+  if (!window.jspdf) { alert('Libreria PDF non caricata (ricarica la pagina).'); return; }
+  const lezRows = lezioniRows().map(({ l }) => l);
+  const interazioni = reportOreInterazioniItems();
+  if (!lezRows.length && !interazioni.length) return;
+  const doc = new jspdf.jsPDF();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFontSize(14);
+  doc.text('Report ore', 14, 15);
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  const filtri = baseFilterSummary();
+  doc.text(filtri.length ? filtri.join(' · ') : 'Nessun filtro applicato', 14, 21);
+  let y = 27;
+  if (lezRows.length) {
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text('Ore di lezione per classe e materia', 14, y);
+    y = pivotAutoTablePDF(doc, lezRows, l => l.classe, l => l.materia, 'Classe', y + 4);
+  }
+  if (interazioni.length) {
+    if (y > pageH - 40) { doc.addPage(); y = 16; }
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text('Appuntamenti e colloqui svolti per tipo e classe', 14, y);
+    y = pivotAutoTablePDF(doc, interazioni, i => i.tipo, i => i.classe, 'Tipo', y + 4);
+  }
+  doc.save(`report-ore-${todayISO()}.pdf`);
 });
 
 // ── Scheda alunno (pagina dedicata, non modale, sempre in sidebar) ───
@@ -6420,9 +7097,7 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 //    "connesso" mentre la sync fallisce in silenzio a ogni salvataggio.
 function updateGCalStatus(connected) {
   const btn = document.getElementById('gcal-status');
-  const label = document.getElementById('gcal-status-label');
   btn.classList.toggle('connected', connected);
-  label.textContent = connected ? 'Calendar connesso' : 'Calendar non connesso';
   btn.title = connected
     ? 'Google Calendar: connesso (colloqui/appuntamenti sincronizzati)'
     : 'Google Calendar: non connesso — clicca per collegare';

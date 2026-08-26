@@ -18,11 +18,10 @@
   <div class="header-logo">Scuola<span>Manager</span></div>
   <div class="header-right">
     <span class="header-badge" id="stu-count">– alunni</span>
-    <button class="btn-verifica" id="btn-add-student" title="Aggiungi un alunno">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <button class="btn-icon" id="btn-add-student" title="Aggiungi un alunno" aria-label="Aggiungi un alunno">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
       </svg>
-      Nuovo alunno
     </button>
     <button class="btn-icon" id="theme-toggle" title="Cambia tema" aria-label="Tema">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -49,11 +48,10 @@
         <input type="file" id="import-file" accept="application/json" hidden/>
       </div>
     </div>
-    <button class="btn-verifica" id="gcal-status" title="Google Calendar: non connesso — clicca per collegare" aria-label="Stato Google Calendar">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <button class="btn-icon" id="gcal-status" title="Google Calendar: non connesso — clicca per collegare" aria-label="Stato Google Calendar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
       </svg>
-      <span id="gcal-status-label">Calendar non connesso</span>
     </button>
     <img class="user-avatar hidden" id="user-avatar" alt="Utente"/>
     <button class="btn-icon" id="btn-logout" title="Esci" aria-label="Esci">
@@ -180,10 +178,47 @@
         </div>
       </div>
 
-      <button class="subject-btn" data-view="report">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="12" y2="11"/></svg>
-        Report
-      </button>
+      <div class="subject-group" data-group="report">
+        <button class="subject-group-toggle">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="12" y2="11"/></svg>
+          <span class="subject-group-label">Report</span>
+          <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
+        <div class="subject-group-children">
+          <button class="subject-btn subject-btn-sub" data-view="report">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Report Voti
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="report-ore">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Report ore
+          </button>
+          <button class="subject-btn subject-btn-sub" data-view="report-os">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+            Report Orali/Scritti
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Link esterni: strumenti al di fuori dell'app, sempre in fondo alla sidebar -->
+    <div class="sidebar-footer">
+      <a class="subject-btn" href="https://www.portaleargo.it/" target="_blank" rel="noopener noreferrer" title="Apri Argo in una nuova scheda">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v7"/></svg>
+        Argo
+      </a>
+      <a class="subject-btn" href="https://drive.google.com/" target="_blank" rel="noopener noreferrer" title="Apri Google Drive in una nuova scheda">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+        Drive personale
+      </a>
+      <a class="subject-btn" href="https://silvioluca.github.io/Galileo-Lab/" target="_blank" rel="noopener noreferrer" title="Apri Galileo Lab in una nuova scheda">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="10" ry="4.2"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.2" transform="rotate(120 12 12)"/></svg>
+        Galileo Lab
+      </a>
+      <a class="subject-btn" href="https://silvioluca.github.io/Galileo-hub/" target="_blank" rel="noopener noreferrer" title="Apri Galileo Hub in una nuova scheda">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.3" fill="currentColor" stroke="none"/><path d="M6.5 8 9 14"/><circle cx="15" cy="10" r="5.2"/></svg>
+        Galileo Hub
+      </a>
     </div>
 
   </nav>
@@ -211,46 +246,84 @@
           </svg>
           <input type="text" class="search-input" id="search-input" placeholder="Cerca…"/>
         </div>
+        <div class="dash-toolbar hidden" id="dash-toolbar">
+          <button class="btn-icon hidden" id="btn-dash-reset" title="Ripristina disposizione predefinita">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-9.36L1 10"/></svg>
+          </button>
+          <button class="btn-icon" id="btn-dash-edit" title="Personalizza dashboard: sposta e ridimensiona i pannelli">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Dashboard view -->
     <section id="view-dashboard">
       <div class="stat-grid" id="stat-grid"></div>
-      <div class="chart-grid">
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Lezioni di oggi</span></div>
+      <div class="dash-grid" id="dashboard-grid">
+        <div class="panel dash-widget" data-widget-id="lezioni-compiti" data-w="2" data-h="3">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Lezioni e compiti di oggi</span>
+          </div>
           <div class="dash-list" id="dash-lezioni-oggi"></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Compiti in scadenza oggi</span></div>
+        <div class="panel dash-widget" data-widget-id="compiti-scadenza" data-w="2" data-h="3">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Compiti in scadenza oggi</span>
+          </div>
           <div class="dash-list" id="dash-compiti-scadenza-oggi"></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Compiti assegnati oggi</span></div>
-          <div class="dash-list" id="dash-compiti-assegnati-oggi"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Verifiche e interrogazioni in arrivo</span></div>
+        <div class="panel dash-widget" data-widget-id="verifiche-arrivo" data-w="2" data-h="3">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Verifiche e interrogazioni in arrivo</span>
+          </div>
           <div class="dash-list" id="dash-verifiche-arrivo"></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-        <div class="panel panel-wide">
-          <div class="panel-head"><span class="panel-title">To-do aperti</span></div>
+        <div class="panel dash-widget" data-widget-id="todo" data-w="2" data-h="3">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">To-do aperti</span>
+          </div>
           <div class="dash-list" id="dash-todo"></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-      </div>
-      <div class="chart-grid" style="margin-top:16px">
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Media per anno scolastico</span></div>
+        <div class="panel dash-widget" data-widget-id="appt-colloqui" data-w="2" data-h="3">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Prossimi appuntamenti e colloqui</span>
+          </div>
+          <div class="dash-list" id="dash-appt-colloqui"></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
+        </div>
+        <div class="panel dash-widget" data-widget-id="chart-years" data-w="2" data-h="4">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Media per anno scolastico</span>
+          </div>
           <div class="chart-box"><canvas id="chart-years"></canvas></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Media per materia (ultimo anno)</span></div>
+        <div class="panel dash-widget" data-widget-id="chart-subjects" data-w="2" data-h="4">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Media per materia (ultimo anno)</span>
+          </div>
           <div class="chart-box"><canvas id="chart-subjects"></canvas></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
-        <div class="panel panel-wide">
-          <div class="panel-head"><span class="panel-title">Distribuzione voti</span></div>
+        <div class="panel dash-widget" data-widget-id="chart-dist" data-w="4" data-h="4">
+          <div class="panel-head">
+            <span class="dash-widget-handle" title="Trascina per spostare"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="8" cy="6" r="1.5"/><circle cx="16" cy="6" r="1.5"/><circle cx="8" cy="12" r="1.5"/><circle cx="16" cy="12" r="1.5"/><circle cx="8" cy="18" r="1.5"/><circle cx="16" cy="18" r="1.5"/></svg></span>
+            <span class="panel-title">Distribuzione voti</span>
+          </div>
           <div class="chart-box"><canvas id="chart-dist"></canvas></div>
+          <div class="dash-widget-resize" title="Ridimensiona"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 20 20 20 20 16"/><line x1="20" y1="20" x2="12" y2="12"/></svg></div>
         </div>
       </div>
     </section>
@@ -383,6 +456,7 @@
             <button class="btn-ghost btn-danger-ghost" id="btn-classe-elimina">Elimina classe</button>
           </div>
         </div>
+        <div class="stat-grid" id="cd-stat-grid" style="margin-bottom:16px"></div>
         <div class="chart-grid">
           <div class="panel">
             <div class="panel-head"><span class="panel-title">Sufficienze</span></div>
@@ -400,6 +474,11 @@
             <div class="panel-head"><span class="panel-title">Distribuzione voti singoli</span></div>
             <div class="chart-box"><canvas id="chart-classe-dist"></canvas></div>
           </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-head"><span class="panel-title">Verifiche e interrogazioni</span></div>
+          <div class="dash-list" id="cd-verifiche-list"></div>
         </div>
 
         <div class="panel table-panel" style="margin-top:16px">
@@ -977,6 +1056,54 @@
         </div>
         <h3>Nessun voto con questi filtri</h3>
         <p>Prova ad allargare i filtri (Anno, Istituto, Classe, Materia, Alunno, Periodo in alto).</p>
+      </div>
+    </section>
+
+    <!-- Report ore: ore di lezione svolte per classe/materia + appuntamenti
+         svolti (rispetta i filtri Anno/Istituto/Classe/Periodo in alto) -->
+    <section id="view-report-ore" class="hidden">
+      <div class="view-toolbar">
+        <span class="toolbar-info" id="report-ore-count"></span>
+        <button class="btn-primary" id="btn-report-ore-pdf">Scarica PDF</button>
+      </div>
+      <div class="panel table-panel">
+        <div class="table-wrap" id="report-ore-wrap"></div>
+      </div>
+      <div class="empty-state hidden" id="report-ore-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        </div>
+        <h3>Nessuna ora svolta</h3>
+        <p>Nessuna lezione con i filtri correnti (Anno, Istituto, Classe, Periodo in alto).</p>
+      </div>
+
+      <div class="panel-head" style="margin-top:20px"><span class="panel-title">Appuntamenti e colloqui svolti</span></div>
+      <div class="view-toolbar">
+        <span class="toolbar-info" id="report-ore-appt-count"></span>
+      </div>
+      <div class="panel table-panel">
+        <div class="table-wrap" id="report-ore-appt-wrap"></div>
+      </div>
+      <div class="empty-state hidden" id="report-ore-appt-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Nessun appuntamento o colloquio svolto</h3>
+        <p>Nessun appuntamento o colloquio passato con i filtri correnti.</p>
+      </div>
+    </section>
+
+    <!-- Report Orali/Scritti: un alunno per riga, voti orali/scritti e le
+         relative medie per una singola Materia + Classe (entrambe
+         obbligatorie, selezionate nei filtri in alto) -->
+    <section id="view-report-os" class="hidden">
+      <div class="view-toolbar">
+        <span class="toolbar-info" id="report-os-count"></span>
+        <button class="btn-primary" id="btn-report-os-pdf">Scarica PDF</button>
+      </div>
+      <p class="stat-sub hidden" id="report-os-message" style="padding:6px 2px 14px"></p>
+      <div class="panel table-panel">
+        <div class="table-wrap" id="report-os-wrap"></div>
       </div>
     </section>
 

@@ -224,6 +224,9 @@ header {
   border-top: 1px solid var(--border-idle);
   display: flex; flex-direction: column; gap: 8px;
 }
+/* Link a strumenti esterni (Argo, Drive, Galileo Lab/Hub): stesso stile dei
+   bottoni di navigazione, ma sono <a> verso altri siti, non data-view */
+.sidebar-footer a.subject-btn { text-decoration: none; }
 .btn-ghost-side {
   display: flex; align-items: center; justify-content: center;
   gap: 8px; width: 100%;
@@ -285,7 +288,11 @@ header {
 /* ── Stat cards (dashboard) ────────────────────────────────────── */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* auto-fit (non auto-fill): le colonne vuote in eccesso collassano, così
+     le card esistenti si distribuiscono su tutta la larghezza invece di
+     lasciare uno spazio vuoto dopo l'ultima quando sono in numero dispari
+     rispetto alle colonne che ci starebbero. */
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
   margin-bottom: 22px;
 }
@@ -317,6 +324,53 @@ header {
   grid-template-columns: repeat(2, 1fr);
   gap: 14px;
 }
+
+/* ── Dashboard: griglia widget riordinabile/ridimensionabile ─────── */
+/* Vive nella filters-bar, al posto della ricerca (inutile in dashboard) */
+.dash-toolbar { display: flex; align-items: center; gap: 8px; }
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  /* Righe di altezza fissa (non "auto"): l'altezza di un widget deve
+     dipendere solo dal ridimensionamento scelto dall'utente, non dal suo
+     contenuto — altrimenti trascinare l'angolo per ingrandirlo non
+     avrebbe alcun effetto reale (il contenuto farebbe comunque crescere
+     la riga da solo). Dentro, .dash-list riempie lo spazio così ottenuto
+     e mostra lo scroll interno solo se gli elementi non ci stanno. */
+  grid-auto-rows: 90px;
+  gap: 14px;
+}
+.dash-widget { position: relative; display: flex; flex-direction: column; }
+/* Dentro un widget la lista deve riempire esattamente l'altezza del
+   pannello (che l'utente controlla ridimensionandolo), non fermarsi al
+   tetto fisso di 220px usato altrove (es. agenda del Calendario): solo se
+   gli elementi non ci stanno comunque compare lo scroll interno. */
+.dash-widget .dash-list { flex: 1; min-height: 0; max-height: none; }
+.dash-widget-handle {
+  display: none; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-right: 2px; color: var(--text-hint);
+  cursor: grab; flex-shrink: 0; touch-action: none;
+}
+.dash-widget-handle:active { cursor: grabbing; }
+.dash-grid.dash-edit-mode .dash-widget-handle { display: inline-flex; }
+.dash-grid.dash-edit-mode .dash-widget {
+  outline: 1px dashed var(--border-idle);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.dash-grid.dash-edit-mode .dash-widget:hover { outline-color: var(--accent-blue); }
+.dash-widget.dash-dragging { opacity: 0.5; z-index: 6; outline: 1px dashed var(--accent-blue) !important; }
+.dash-widget.dash-drop-target { outline: 2px solid var(--accent-blue) !important; }
+.dash-widget-resize {
+  display: none; position: absolute; right: 2px; bottom: 2px;
+  width: 18px; height: 18px; align-items: center; justify-content: center;
+  color: var(--text-hint); cursor: nwse-resize; touch-action: none;
+}
+.dash-grid.dash-edit-mode .dash-widget-resize { display: flex; }
+.dash-widget-resize:hover { color: var(--accent-blue); }
+.dash-widget.dash-resizing { z-index: 6; }
+.dash-widget.dash-resizing .dash-widget-resize { color: var(--accent-blue); }
+
 .panel {
   background: var(--bg2);
   border: 1px solid var(--border-idle);
@@ -915,6 +969,18 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 .dash-item:hover { border-color: var(--accent-blue); }
 .dash-item-top { display: flex; align-items: center; gap: 8px; }
 .dash-item-classe { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.dash-item-ora { font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 600; color: var(--text-hint); flex-shrink: 0; }
+/* Classe come chip colorata (stesso colore per classe usato in Orario/Settimana) */
+.classe-chip {
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex-shrink: 0;
+  background: color-mix(in srgb, var(--cls-color, var(--text-hint)) 16%, var(--bg3));
+  color: var(--cls-color, var(--text-primary));
+}
+.dash-item-titolo {
+  font-size: 12px; font-weight: 600; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;
+}
+.dash-item-top .mat-chip { margin-left: auto; flex-shrink: 0; }
 .dash-item-text { font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
 
 /* ── Lista voti "Voto classe" (form) ──────────────────────────────── */
@@ -1025,6 +1091,12 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 @media (max-width: 900px) {
   .chart-grid { grid-template-columns: 1fr; }
   .panel-wide { grid-column: auto; }
+  /* Sotto tablet la griglia magnetica non ha senso (troppo stretta per
+     trascinare/ridimensionare su più colonne): si torna a un elenco
+     impilato in ordine naturale, ignorando la disposizione personalizzata. */
+  .dash-toolbar { display: none; }
+  .dash-grid { display: flex; flex-direction: column; }
+  .dash-grid .dash-widget { grid-column: auto !important; grid-row: auto !important; }
 }
 
 /* ── Tablet: sidebar in overlay, non spinge il contenuto ── */
@@ -1054,7 +1126,6 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
   .filter-select { flex: 1 1 45%; min-width: 0; }
 
   .ex-grid { grid-template-columns: 1fr; }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .stat-card { padding: 14px 16px; }
   .stat-value { font-size: 20px; }
   .chart-box { height: 220px; }
