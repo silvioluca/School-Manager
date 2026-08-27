@@ -58,10 +58,10 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'alunno-detail', 'classe-detail', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'alunno-detail', 'classe-detail', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
-  'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative',
+  'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative', bonusmalus: 'Bonus/Malus',
   bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
   'report-os': 'Report Orali/Scritti',
 };
@@ -666,6 +666,7 @@ function renderView() {
   const renderers = {
     dashboard: renderDashboard, alunni: renderAlunni, classi: renderClassi, voti: renderVoti, report: renderReport,
     lezioni: renderLezioni, compiti: renderCompiti, orario: renderOrario, verifiche: renderVerifiche, rubriche: renderRubriche,
+    bonusmalus: renderBonusMalus,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
     'report-os': renderReportOS,
@@ -2488,9 +2489,9 @@ document.querySelectorAll('#vv-pratico-modo .seg-btn').forEach(btn => btn.addEve
 // Qui solo la sigla (PDP/PEI), senza la classificazione (es. "F81.0"): la
 // colonna Alunno è stretta e a larghezza fissa, la pill con la classificazione
 // per intero andrebbe a sovrapporsi alla colonna Data accanto
-function vvAlunnoCell(s) {
+function vvAlunnoCell(s, showBM) {
   const profilo = s.profilo && s.profilo !== 'ND' ? s.profilo : '';
-  return `${escHtml(s.cognome)} ${escHtml(s.nome)}${profilo ? `<span class="profilo-badge pb-inline pb-${profilo.toLowerCase()}">${escHtml(profilo)}</span>` : ''}`;
+  return `${escHtml(s.cognome)} ${escHtml(s.nome)}${profilo ? `<span class="profilo-badge pb-inline pb-${profilo.toLowerCase()}">${escHtml(profilo)}</span>` : ''}${showBM ? bmScoreChipsHtml(s) : ''}`;
 }
 function renderVVPunteggiTable(stu) {
   document.getElementById('vv-grid-wrap').innerHTML = `
@@ -2506,7 +2507,7 @@ function renderVVPunteggiTable(stu) {
         const pcts = vvState.percentuali[s.id] || {};
         const voto = vvVotoPercentuali(s);
         return `<tr data-sid="${s.id}">
-          <td>${vvAlunnoCell(s)}</td>
+          <td>${vvAlunnoCell(s, true)}</td>
           <td><input class="vf-input vv-data-stu" data-sid="${s.id}" type="date" value="${vvDataOf(s)}"/></td>
           ${vvState.esercizi.map(e => `<td><input class="vf-input vv-pct" data-sid="${s.id}" data-eid="${e.id}" type="number" min="0" max="100" step="1" value="${pcts[e.id] ?? ''}"/></td>`).join('')}
           <td class="vt-mono vt-voto vv-voto-pct ${voto != null ? gradeClass(voto) : ''}">${voto != null ? fmt(voto) : '—'}</td>
@@ -2550,7 +2551,7 @@ function renderVVGrigliaTable(stu) {
       ${stu.map(s => {
         const voto = vvVotoGriglia(s);
         return `<tr data-sid="${s.id}">
-          <td>${vvAlunnoCell(s)}</td>
+          <td>${vvAlunnoCell(s, true)}</td>
           ${vvState.esercizi.map(e => {
             const g = vvState.griglia[s.id]?.[e.id] || {};
             const somma = vvSommaGrigliaEs(s, e.id);
@@ -3383,6 +3384,211 @@ document.getElementById('bes-save').addEventListener('click', async () => {
     renderAll();
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
+
+// ── Bonus/Malus: piccoli riconoscimenti/note comportamentali per alunno,
+// svincolati dai voti (stelline/teschietti/quadernetti). Il dato vive su
+// s.bonusMalus (vedi db.js), quindi si salva con DB.put(s) come profilo/note.
+const BM_TIPI = {
+  stella: {
+    label: 'Stellina', plural: 'stelline', color: 'var(--accent-amber)',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  },
+  teschio: {
+    label: 'Teschietto', plural: 'teschietti', color: 'var(--accent-red)',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C7 2 4 5.5 4 10c0 2.8 1.3 5 3 6.3V19a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-2.7c1.7-1.3 3-3.5 3-6.3 0-4.5-3-8-8-8z"/><circle cx="9" cy="10.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r="1.7" fill="currentColor" stroke="none"/></svg>',
+  },
+  quaderno: {
+    label: 'Quadernetto', plural: 'quadernetti', color: 'var(--accent-blue)',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="3" x2="8" y2="21"/><line x1="11" y1="8" x2="17" y2="8"/><line x1="11" y1="12" x2="17" y2="12"/><line x1="11" y1="16" x2="17" y2="16"/></svg>',
+  },
+};
+const BM_RM_ICON = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+const BM_PLUS_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+const BM_MINUS_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
+function bmCounts(s) {
+  const arr = s.bonusMalus || [];
+  return {
+    stella: arr.filter(b => b.tipo === 'stella').length,
+    teschio: arr.filter(b => b.tipo === 'teschio').length,
+    quaderno: arr.filter(b => b.tipo === 'quaderno').length,
+  };
+}
+
+function renderBonusMalus() {
+  const list = filtered().sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+  document.getElementById('bm-count').textContent = `${list.length} alunn${list.length === 1 ? 'o' : 'i'}`;
+  const wrap = document.getElementById('bm-wrap');
+  const empty = document.getElementById('bm-empty');
+  if (!list.length) { wrap.innerHTML = ''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  wrap.innerHTML = `
+  <table class="voti-table bm-table">
+    <thead><tr><th>Alunno</th><th>Stelline</th><th>Teschietti</th><th>Quadernetti</th></tr></thead>
+    <tbody>${list.map(bmRowHtml).join('')}</tbody>
+  </table>`;
+  wireBonusMalusRows();
+}
+
+// Niente colonna "Azioni" a sé: i pulsantini +/- stanno in fondo a ciascuna
+// colonna (compatti, non più di 8 elementi previsti per tipo). I pulsanti
+// "aggiungi" a icona intera sono nella Scheda alunno (vedi renderAdBmSummary).
+function bmRowHtml(s) {
+  return `
+  <tr data-sid="${s.id}">
+    <td>${escHtml(s.cognome)} ${escHtml(s.nome)}</td>
+    <td><div class="bm-icons-cell">${bmIconsCellHtml(s, 'stella')}</div></td>
+    <td><div class="bm-icons-cell">${bmIconsCellHtml(s, 'teschio')}</div></td>
+    <td><div class="bm-icons-cell">${bmIconsCellHtml(s, 'quaderno')}</div></td>
+  </tr>`;
+}
+
+// Un'icona per elemento (non un numero): cliccandola compare accanto un
+// piccolo popover inline con data e "x" per rimuovere solo quell'elemento —
+// niente riga espansa, resta tutto dentro la stessa cella. Le icone stanno
+// in una riga che va a capo (bm-icons-row); i pulsantini +/- sono in una
+// riga separata (bm-icons-actions), spinta in fondo alla cella con
+// margin-top:auto — così restano sempre allineati in basso, non subito
+// dopo l'ultima icona quando le icone vanno a capo su più righe.
+function bmIconsCellHtml(s, tipo) {
+  const arr = (s.bonusMalus || []).filter(b => b.tipo === tipo).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  const t = BM_TIPI[tipo];
+  const icons = arr.map(b => `<span class="bm-icon-item" style="--bm-color:${t.color}" data-id="${b.id}" data-sid="${s.id}" data-date="${escHtml(b.data)}" title="${escHtml(fmtData(b.data))}">${t.icon}</span>`).join('');
+  return `
+    <div class="bm-icons-row">${icons}</div>
+    <div class="bm-icons-actions">
+      <button class="bm-mini-btn" data-add="${tipo}" data-sid="${s.id}" title="Aggiungi ${t.label.toLowerCase()}">${BM_PLUS_ICON}</button>
+      <button class="bm-mini-btn" data-quickrm="${tipo}" data-sid="${s.id}" title="Rimuovi l'ultima aggiunta" ${arr.length ? '' : 'disabled'}>${BM_MINUS_ICON}</button>
+    </div>`;
+}
+
+// Aggiorna in-place le tre celle a icone di un solo alunno dopo
+// aggiunta/rimozione: evita di ridisegnare l'intera tabella (e quindi il
+// contatore/l'ordinamento) per un singolo click.
+function bmRefreshRow(sid) {
+  const s = state.students.find(x => x.id === sid);
+  if (!s) return;
+  const row = document.querySelector(`#bm-wrap tr[data-sid="${sid}"]`);
+  if (row) {
+    const cells = row.querySelectorAll('.bm-icons-cell');
+    ['stella', 'teschio', 'quaderno'].forEach((t, i) => { if (cells[i]) cells[i].innerHTML = bmIconsCellHtml(s, t); });
+  }
+  if (state.openId === sid) renderAdBmSummary(s); // riepilogo nell'header Scheda alunno, se è l'alunno aperto
+}
+
+function bmClosePopover() {
+  document.querySelectorAll('.bm-icon-popover').forEach(p => p.remove());
+  document.querySelectorAll('.bm-icon-item.active').forEach(el => el.classList.remove('active'));
+}
+
+// Delegazione sull'intero #bm-wrap: la tabella viene ricreata ad ogni
+// render (innerHTML), ma il contenitore resta lo stesso, quindi il
+// listener va agganciato una volta sola (altrimenti si accumulerebbe ad
+// ogni renderBonusMalus() e ogni click scatterebbe più volte).
+function wireBonusMalusRows() {
+  const wrap = document.getElementById('bm-wrap');
+  if (wrap.dataset.bmWired) return;
+  wrap.dataset.bmWired = '1';
+  wrap.addEventListener('click', async e => {
+    const rm = e.target.closest('[data-rm]');
+    if (rm) {
+      bmClosePopover();
+      const s = state.students.find(x => x.id === rm.dataset.sid);
+      if (!s) return;
+      DB.removeBonusMalus(s, rm.dataset.rm);
+      await DB.put(s);
+      bmRefreshRow(s.id);
+      return;
+    }
+    const quickrm = e.target.closest('[data-quickrm]');
+    if (quickrm) {
+      const s = state.students.find(x => x.id === quickrm.dataset.sid);
+      if (!s) return;
+      const arr = (s.bonusMalus || []).filter(b => b.tipo === quickrm.dataset.quickrm).sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+      const last = arr[arr.length - 1];
+      if (!last) return;
+      bmClosePopover();
+      DB.removeBonusMalus(s, last.id);
+      await DB.put(s);
+      bmRefreshRow(s.id);
+      return;
+    }
+    const item = e.target.closest('.bm-icon-item');
+    if (item) {
+      const wasActive = item.classList.contains('active');
+      bmClosePopover();
+      if (wasActive) return; // era già aperto: il click lo ha solo richiuso
+      item.classList.add('active');
+      const pop = document.createElement('span');
+      pop.className = 'bm-icon-popover';
+      pop.innerHTML = `${escHtml(fmtData(item.dataset.date))}<span class="bm-chip-rm" data-rm="${item.dataset.id}" data-sid="${item.dataset.sid}" title="Rimuovi">${BM_RM_ICON}</span>`;
+      item.after(pop);
+      return;
+    }
+    const add = e.target.closest('[data-add]');
+    if (add) {
+      const s = state.students.find(x => x.id === add.dataset.sid);
+      if (!s) return;
+      bmClosePopover();
+      DB.addBonusMalus(s, add.dataset.add);
+      await DB.put(s);
+      bmRefreshRow(s.id);
+    }
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.bm-icon-item') && !e.target.closest('.bm-icon-popover')) bmClosePopover();
+  });
+}
+
+// Riepilogo (icona+conteggio colorati) centrato fra i tab anno e i
+// pulsanti, e pulsanti di aggiunta a icona intera incollati a "+ Voto" —
+// due gruppi separati nella riga, non uno solo. La rimozione puntuale di
+// un elemento resta nella sezione Bonus/Malus dedicata.
+function renderAdBmSummary(s) {
+  const el = document.getElementById('ad-bm-summary');
+  const actionsEl = document.getElementById('ad-bm-actions');
+  if (!el || !actionsEl) return;
+  wireAdBmSummary();
+  const c = bmCounts(s);
+  el.innerHTML = ['stella', 'teschio', 'quaderno'].map(t => {
+    const t2 = BM_TIPI[t];
+    return `<span class="bm-summary-item" style="--bm-color:${t2.color}" title="${t2.label}">${t2.icon}${c[t]}</span>`;
+  }).join('');
+  // Pulsanti di aggiunta: l'icona del tipo stesso è il pulsante (come
+  // l'originale colonna Azioni della tabella, da cui sono stati spostati
+  // qui), non un generico "+" accanto al conteggio.
+  actionsEl.innerHTML = ['stella', 'teschio', 'quaderno'].map(t => {
+    const t2 = BM_TIPI[t];
+    return `<button class="btn-icon" data-add="${t}" data-sid="${s.id}" title="Aggiungi ${t2.label.toLowerCase()}">${t2.icon}</button>`;
+  }).join('');
+}
+function wireAdBmSummary() {
+  const el = document.getElementById('ad-bm-actions');
+  if (!el || el.dataset.bmWired) return;
+  el.dataset.bmWired = '1';
+  el.addEventListener('click', async e => {
+    const add = e.target.closest('[data-add]');
+    if (!add) return;
+    const s = state.students.find(x => x.id === add.dataset.sid);
+    if (!s) return;
+    DB.addBonusMalus(s, add.dataset.add);
+    await DB.put(s);
+    renderAdBmSummary(s);
+  });
+}
+
+// Chip "ogni 4" da affiancare al nome nel punteggio esercizi di Verifiche:
+// una chip per tipo con almeno 4 elementi, col numero di gruppi da 4 (non
+// il totale grezzo, altrimenti perderebbe il senso di "traguardo ogni 4")
+function bmScoreChipsHtml(s) {
+  const c = bmCounts(s);
+  return ['stella', 'teschio', 'quaderno'].map(t => {
+    const n = Math.floor(c[t] / 4);
+    if (!n) return '';
+    const t2 = BM_TIPI[t];
+    return `<span class="bm-score-chip" style="--bm-color:${t2.color}" title="${n * 4} ${t2.plural}">${t2.icon}</span>`;
+  }).join('');
+}
 
 // ── Colloqui: orario di ricevimento (in Orario) + elenco appuntamenti ───
 // L'orario ricorrente vive dentro l'orario del docente (uno slot con
@@ -5910,6 +6116,7 @@ function fillStudentDetail(s) {
   setModalClasse(s);
   document.getElementById('modal-media').textContent = `media ${fmt(studentAvg(s, 'all'))}`;
   setModalProfilo(s);
+  renderAdBmSummary(s);
   renderYearTabs(years);
   renderStudentSummary();
   renderGrades();

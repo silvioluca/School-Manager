@@ -136,6 +136,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
             Rubriche valutative
           </button>
+          <button class="subject-btn subject-btn-sub" data-view="bonusmalus">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Bonus/Malus
+          </button>
         </div>
       </div>
 
@@ -691,6 +695,24 @@
       </div>
     </section>
 
+    <!-- Bonus/Malus view: piccoli riconoscimenti/note comportamentali per
+         alunno (stelline/teschietti/quadernetti), svincolati dai voti -->
+    <section id="view-bonusmalus" class="hidden">
+      <div class="view-toolbar">
+        <span class="toolbar-info" id="bm-count"></span>
+      </div>
+      <div class="panel table-panel">
+        <div class="table-wrap" id="bm-wrap"></div>
+      </div>
+      <div class="empty-state hidden" id="bm-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
+        <h3>Nessun alunno</h3>
+        <p>Non ci sono alunni con i filtri correnti.</p>
+      </div>
+    </section>
+
     <!-- Lezioni view: registro delle lezioni svolte, tre modalità di vista -->
     <section id="view-lezioni" class="hidden">
       <div class="view-toolbar notion-toolbar">
@@ -1145,7 +1167,11 @@
         </div>
         <div class="ad-header-bottom">
           <div class="year-tabs" id="ad-year-tabs"></div>
-          <button class="btn-primary" id="btn-add-grade">+ Voto</button>
+          <div class="bm-header-summary" id="ad-bm-summary"></div>
+          <div class="ad-header-right">
+            <div class="bm-actions" id="ad-bm-actions"></div>
+            <button class="btn-primary" id="btn-add-grade">+ Voto</button>
+          </div>
         </div>
       </div>
 

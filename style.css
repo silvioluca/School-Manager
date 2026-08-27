@@ -897,6 +897,12 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 .vv-punteggi-table th:last-child, .vv-punteggi-table td:last-child,
 .vv-griglia-table th:last-child, .vv-griglia-table td:last-child { width: 70px; }
 .vv-punteggi-table .vv-data-stu { max-width: 100%; }
+/* La colonna Alunno eredita da .voti-table un width:1%+nowrap pensato per
+   l'auto-layout (si stringe al contenuto): qui la colonna è invece fissa a
+   160px (table-layout:fixed), quindi con un nome lungo + badge profilo/BM
+   il nowrap lo farebbe sconfinare sopra la colonna Data invece di andare a
+   capo. */
+.vv-punteggi-table td:first-child, .vv-griglia-table td:first-child { white-space: normal; }
 /* Il contenuto delle celle (A/B/C) è centrato: anche il titolo dell'esercizio
    nell'intestazione deve esserlo, altrimenti non torna sopra la colonna */
 .vv-griglia-table th:not(:first-child):not(:last-child) { text-align: center; }
@@ -982,6 +988,79 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 }
 .dash-item-top .mat-chip { margin-left: auto; flex-shrink: 0; }
 .dash-item-text { font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
+
+/* ── Bonus/Malus ────────────────────────────────────────────────── */
+/* Colonne Stelline/Teschietti/Quadernetti a larghezza fissa ed uguale,
+   indipendente dal numero di elementi (mai più di ~8 per tipo): senza
+   table-layout:fixed la colonna con più icone si allargherebbe rispetto
+   alle altre ad ogni aggiunta. */
+.bm-table { table-layout: fixed; width: 100%; }
+.bm-table th:first-child, .bm-table td:first-child { width: 180px; }
+/* I pulsantini +/- restano fissi all'estrema destra della colonna: le
+   icone (che vanno a capo su più righe, se tante) stanno in un blocco
+   flessibile a sinistra, i pulsantini in un blocco a larghezza fissa che
+   non va mai a capo, spinto a destra da flex sul contenitore. */
+.bm-icons-cell { display: flex; align-items: flex-start; gap: 6px; }
+.bm-icons-row { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; flex: 1; min-width: 0; }
+.bm-icons-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.bm-icon-item {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px; cursor: pointer;
+  color: var(--bm-color, var(--text-secondary)); opacity: 0.85;
+  transition: all var(--transition);
+}
+.bm-icon-item:hover, .bm-icon-item.active { background: var(--bg3); opacity: 1; }
+/* Popover inline: compare accanto all'icona cliccata, dentro la stessa
+   cella — non un'intera riga espansa, solo data + rimozione di quell'unico
+   elemento */
+.bm-icon-popover {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; padding: 3px 6px 3px 9px; border-radius: 20px;
+  background: var(--bg3); border: 1px solid var(--bm-color, var(--border-idle));
+  color: var(--bm-color, var(--text-secondary)); white-space: nowrap;
+}
+.bm-chip-rm {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%; color: inherit;
+  opacity: 0.7; cursor: pointer; flex-shrink: 0; transition: all var(--transition);
+}
+.bm-chip-rm:hover { background: var(--accent-red); color: #fff; opacity: 1; }
+
+/* Pulsantini +/- compatti, in fondo a ciascuna colonna della tabella
+   Bonus/Malus e nella Scheda alunno (aggiunta rapida) */
+.bm-mini-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 5px;
+  border: 1px solid var(--border-idle); background: var(--bg3);
+  color: var(--text-hint); cursor: pointer; flex-shrink: 0;
+  transition: all var(--transition);
+}
+.bm-mini-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.bm-mini-btn:disabled { opacity: 0.35; cursor: default; }
+.bm-mini-btn:disabled:hover { border-color: var(--border-idle); color: var(--text-hint); }
+
+/* Riepilogo icona+conteggio: resta il secondo dei tre elementi distribuiti
+   da .ad-header-bottom (space-between), quindi centrato fra i tab anno e
+   il blocco pulsanti/Voto a destra. */
+.bm-header-summary { display: flex; gap: 14px; align-items: center; }
+/* Pulsanti di aggiunta incollati a "+ Voto": un unico gruppo a destra
+   (terzo elemento del space-between), non separato da esso. */
+.ad-header-right { display: flex; align-items: center; gap: 8px; }
+.bm-actions { display: flex; gap: 4px; }
+.bm-summary-item {
+  display: flex; align-items: center; gap: 5px;
+  font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700;
+  color: var(--bm-color, var(--text-secondary));
+}
+
+.bm-score-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  background: var(--bg3); border: 1px solid var(--bm-color, var(--border-idle));
+  color: var(--bm-color, var(--text-secondary));
+  margin-left: 4px; vertical-align: middle;
+}
+.bm-score-chip svg { width: 10px; height: 10px; flex-shrink: 0; }
 
 /* ── Lista voti "Voto classe" (form) ──────────────────────────────── */
 .gc-list {

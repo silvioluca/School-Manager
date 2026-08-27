@@ -718,6 +718,9 @@ const DB = (() => {
       // Piano BES (facoltativo, ha senso solo con profilo PDP/PEI): strumenti
       // compensativi/dispensativi/valutativi e obiettivi, testo libero.
       besPiano: { compensativi: '', dispensativi: '', valutativi: '', obiettivi: '' },
+      // Bonus/Malus: piccoli riconoscimenti/note comportamentali svincolati
+      // dall'anno scolastico (come profilo/besPiano), non dai voti.
+      bonusMalus: [],
       anni: {},
       createdAt: null,
       updatedAt: null,
@@ -753,6 +756,17 @@ const DB = (() => {
       verificaEsercizi: grade.verificaEsercizi || null,
       verificaPercentuali: grade.verificaPercentuali || null,
     });
+    return doc;
+  }
+
+  // Bonus/Malus (muta e ritorna il doc, non salva — stesso pattern di
+  // addGrade/removeGrade: il chiamante fa DB.put(doc) per persistere)
+  function addBonusMalus(doc, tipo) {
+    (doc.bonusMalus ||= []).push({ id: uid(), tipo, data: todayISO() });
+    return doc;
+  }
+  function removeBonusMalus(doc, id) {
+    doc.bonusMalus = (doc.bonusMalus || []).filter(b => b.id !== id);
     return doc;
   }
 
@@ -845,7 +859,7 @@ const DB = (() => {
 
   return {
     all, get, put, putMany, remove, clear, uid,
-    newStudent, enroll, addGrade, removeGrade, editGrade,
+    newStudent, enroll, addGrade, removeGrade, editGrade, addBonusMalus, removeBonusMalus,
     currentAnno, classeCorrente,
     getClasseMeta, materieOf, indirizzoOf, istitutoOf, materieMapAll, allIstituti, setClasseMeta,
     deleteClasse, promuoviClasse,
