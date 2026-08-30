@@ -4498,7 +4498,7 @@ function renderLezioniSettimana() {
       const iso = toISO(d);
       const items = apptByDate[iso] || [];
       return `<div class="week-extra-cell">${items.map(({ anno: a, appt }) => `
-          <div class="week-appt-chip" data-anno="${escHtml(a)}" data-id="${appt.id}" title="${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}${appt.oggetto ? ' · ' + escHtml(appt.oggetto) : ''}">${appt.ora ? escHtml(appt.ora) + ' · ' : ''}${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}</div>`).join('')}</div>`;
+          <div class="week-appt-chip" data-anno="${escHtml(a)}" data-id="${appt.id}" title="${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}${appt.oggetto ? ' · ' + escHtml(appt.oggetto) : ''}">${appt.ora ? escHtml(appt.ora) + ' · ' : ''}${escHtml(appt.oggetto || TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}</div>`).join('')}</div>`;
     }).join('')}` : ''}
     ${[...Array(ORE_MAX)].map((_, i) => {
       const ora = i + 1;
@@ -4604,7 +4604,7 @@ function renderLezioniCalendario() {
 
   const itemChipHtml = item => item.tipo === 'lezione'
     ? `<div class="cal-lesson" style="--cls-color:${colorOfClasse(item.l.classe)}" title="${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · '))}">${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · ') || '—')}</div>`
-    : `<div class="cal-lesson" style="--cls-color:var(--accent-amber)" title="${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}${item.a.oggetto ? ' · ' + escHtml(item.a.oggetto) : ''}">${item.a.ora ? escHtml(item.a.ora) + ' · ' : ''}${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}</div>`;
+    : `<div class="cal-lesson" style="--cls-color:var(--accent-amber)" title="${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}${item.a.oggetto ? ' · ' + escHtml(item.a.oggetto) : ''}">${item.a.ora ? escHtml(item.a.ora) + ' · ' : ''}${escHtml(item.a.oggetto || TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}</div>`;
   const dayCellHtml = d => {
     const iso = toISO(d);
     const dayItems = lezByDay[iso] || [];
@@ -4680,8 +4680,11 @@ function calEventsFor(sources) {
   });
   if (sources.appuntamenti) appuntamentiRows().forEach(({ anno, a }) => rows.push({
     tipo: 'appuntamento', anno, id: a.id, data: a.data, ora: a.ora || '', sortOra: a.ora || '',
-    label: TIPI_APPUNTAMENTO[a.tipo] || a.tipo,
-    sub: a.oggetto || '', color: 'var(--accent-amber)',
+    // Il titolo (oggetto) è l'informazione utile a colpo d'occhio, non la
+    // tipologia: la tipologia (Collegio/Consiglio/…) resta come sotto-info,
+    // finché l'oggetto non è compilato (es. bozza veloce) allora fa da titolo.
+    label: a.oggetto || TIPI_APPUNTAMENTO[a.tipo] || a.tipo,
+    sub: TIPI_APPUNTAMENTO[a.tipo] || a.tipo, color: 'var(--accent-amber)',
   }));
   return rows.sort((x, y) => (x.data + x.sortOra).localeCompare(y.data + y.sortOra));
 }
@@ -4729,7 +4732,7 @@ function renderCalSettimana() {
         const items = byDate[iso] || [];
         return `<div class="cal-week-day ${iso === today ? 'today' : ''}">
           <div class="cal-week-day-head ${iso === today ? 'is-today' : ''}">${DOW_LABELS[(d.getDay() + 6) % 7]} ${d.getDate()}</div>
-          ${items.map(ev => `<div class="cal-week-chip" style="--chip-color:${ev.color}" data-tipo="${ev.tipo}" data-anno="${escHtml(ev.anno)}" data-id="${ev.id}" title="${escHtml([ev.label, ev.sub].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
+          ${items.map(ev => `<div class="cal-week-chip" style="--chip-color:${ev.color}" data-tipo="${ev.tipo}" data-anno="${escHtml(ev.anno)}" data-id="${ev.id}" title="${escHtml([ev.label, ev.sub !== ev.label ? ev.sub : ''].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
           ${!items.length ? '<div class="cal-week-empty">—</div>' : ''}
         </div>`;
       }).join('')}
@@ -4769,7 +4772,7 @@ function renderCalMese() {
     return `<div class="cal-day ${d.getMonth() !== month ? 'outside' : ''} ${iso === today ? 'today' : ''}" data-date="${iso}">
         <span class="cd-num">${d.getDate()}</span>
         <div class="cal-day-lessons">
-          ${shown.map(ev => `<div class="cal-lesson" style="--cls-color:${ev.color}" title="${escHtml([ev.label, ev.sub].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
+          ${shown.map(ev => `<div class="cal-lesson" style="--cls-color:${ev.color}" title="${escHtml([ev.label, ev.sub !== ev.label ? ev.sub : ''].filter(Boolean).join(' · '))}">${ev.ora ? escHtml(ev.ora) + ' · ' : ''}${escHtml(ev.label)}</div>`).join('')}
           ${extra > 0 ? `<div class="cal-lesson-more">+${extra} altr${extra === 1 ? 'a' : 'e'}</div>` : ''}
         </div>
       </div>`;
@@ -4803,7 +4806,7 @@ function renderCalAgenda() {
         <span class="mat-chip" style="--mat-color:${ev.color}">${escHtml(ev.ora || '—')}</span>
         <span class="dash-item-classe">${escHtml(ev.label)}</span>
       </div>
-      ${ev.sub ? `<div class="dash-item-text">${escHtml(ev.sub)}</div>` : ''}
+      ${ev.sub && ev.sub !== ev.label ? `<div class="dash-item-text">${escHtml(ev.sub)}</div>` : ''}
     </div>`;
   });
   list.innerHTML = html;
