@@ -89,6 +89,14 @@ const DB = (() => {
   let _colloqui = {};   // anno → [ {id, data, ora, studenteId, partecipanti, note}, … ] — colloqui genitori
   let _appuntamenti = {}; // anno → [ {id, tipo, data, ora, oraFine, modalita, classe, oggetto, note}, … ] — collegi/consigli/incontri
   let _todos = [];      // [ {id, titolo, descrizione, stato, scadenza}, … ] — to-do, globale (non per anno)
+  // Materiale: la libreria base (MATERIALE_LIST, in materiale-data.js) è
+  // statica, importata una tantum dall'indice del Drive. Le modifiche
+  // dell'utente vivono qui come overlay, per non dover riscrivere il file
+  // statico ad ogni aggiunta/modifica/eliminazione:
+  // - added: elementi nuovi, creati interamente dall'utente
+  // - edited: { [id elemento statico]: {titolo, categoria, materia, argomento, link} } sovrascritture parziali
+  // - deleted: id di elementi statici nascosti (eliminazione "soft", il seed originale resta intatto)
+  let _materialeUser = { added: [], edited: {}, deleted: [] };
 
   function _db() { return firebase.firestore(); }
 
@@ -161,11 +169,12 @@ const DB = (() => {
       _colloqui = p.colloqui || {};
       _appuntamenti = p.appuntamenti || {};
       _todos = p.todos || [];
+      _materialeUser = p.materialeUser || { added: [], edited: {}, deleted: [] };
       return true;
     } catch { return false; }
   }
   function _cacheSave() {
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos })); } catch {}
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos, materialeUser: _materialeUser })); } catch {}
   }
   function _cacheDrop() {
     try { sessionStorage.removeItem(CACHE_KEY); } catch {}
@@ -316,6 +325,9 @@ const DB = (() => {
 
     const todosDoc = snap.docs.find(d => d.id === 'todos');
     _todos = todosDoc ? JSON.parse(todosDoc.data().json) : [];
+
+    const materialeUserDoc = snap.docs.find(d => d.id === 'materiale-user');
+    _materialeUser = materialeUserDoc ? JSON.parse(materialeUserDoc.data().json) : { added: [], edited: {}, deleted: [] };
 
     _cache = list;
     _loaded = {};
@@ -511,6 +523,15 @@ const DB = (() => {
     if (!_cache) await all();
     _todos = list;
     await packs().doc('todos').set({ json: JSON.stringify(_todos) });
+    _cacheDrop();
+  }
+
+  // ── Materiale (overlay utente sopra MATERIALE_LIST statico) ────────
+  function getMaterialeUser() { return _materialeUser; }
+  async function saveMaterialeUser(obj) {
+    if (!_cache) await all();
+    _materialeUser = obj;
+    await packs().doc('materiale-user').set({ json: JSON.stringify(_materialeUser) });
     _cacheDrop();
   }
 
@@ -806,6 +827,7 @@ const DB = (() => {
     return JSON.stringify({
       app: APP, exportedAt: new Date().toISOString(),
       students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos,
+      materialeUser: _materialeUser,
     }, null, 2);
   }
 
@@ -853,6 +875,10 @@ const DB = (() => {
       _todos = parsed.todos;
       await packs().doc('todos').set({ json: JSON.stringify(_todos) });
     }
+    if (!Array.isArray(parsed) && parsed.materialeUser) {
+      _materialeUser = parsed.materialeUser;
+      await packs().doc('materiale-user').set({ json: JSON.stringify(_materialeUser) });
+    }
     _cacheDrop();
     return list.length;
   }
@@ -870,6 +896,7 @@ const DB = (() => {
     getColloqui, getColloquiAnni, addColloquio, updateColloquio, removeColloquio, addColloquiBulk,
     getAppuntamenti, getAppuntamentiAnni, addAppuntamento, updateAppuntamento, removeAppuntamento,
     getTodos, saveTodos,
+    getMaterialeUser, saveMaterialeUser,
     exportJSON, importJSON,
   };
 })();

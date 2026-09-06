@@ -850,6 +850,17 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 }
 .voti-table th:first-child, .voti-table td:first-child { width: 1%; white-space: nowrap; }
 
+/* Materiale: colonne a larghezza fissa uguale sia nella tabella piatta sia
+   in ognuno dei panel di raggruppamento — senza table-layout:fixed ogni
+   <table> (una per gruppo) si dimensiona sul proprio contenuto e le
+   colonne finiscono disallineate da un gruppo all'altro. */
+.materiale-table { table-layout: fixed; width: 100%; }
+.materiale-table th:first-child, .materiale-table td:first-child { width: 32%; white-space: normal; }
+.materiale-table th:nth-child(2), .materiale-table td:nth-child(2) { width: 18%; }
+.materiale-table th:nth-child(3), .materiale-table td:nth-child(3) { width: 14%; }
+.materiale-table th:nth-child(4), .materiale-table td:nth-child(4) { width: 24%; }
+.materiale-table th:nth-child(5), .materiale-table td:nth-child(5) { width: 12%; }
+
 /* ── Dettaglio classe (inline nella pagina) ───────────────────────── */
 .cm-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cm-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }

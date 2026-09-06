@@ -42,6 +42,8 @@ const state = {
     voti: false, alunni: false, bes: false, compiti: false, colloqui: false,
     // eccetto lezioni (prototipo Notion): null oppure 'classe'|'materia'|'giorno'|'ora'
     lezioni: null,
+    // Materiale: null oppure 'categoria'|'argomento'
+    materiale: null,
   },
   groupPage: {}, // "viewKey|valoreGruppo" -> pagina corrente (0-based) quando raggruppato
   sort: {                  // ordinamento corrente per ciascuna tabella: { key, dir: 1|-1 }
@@ -58,12 +60,12 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'alunno-detail', 'classe-detail', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative', bonusmalus: 'Bonus/Malus',
   bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
-  'report-os': 'Report Orali/Scritti',
+  'report-os': 'Report Orali/Scritti', materiale: 'Materiale',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
 const TIPI_APPUNTAMENTO = {
@@ -669,7 +671,7 @@ function renderView() {
     bonusmalus: renderBonusMalus,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
-    'report-os': renderReportOS,
+    'report-os': renderReportOS, materiale: renderMateriale,
   };
   try {
     renderers[state.view]();
@@ -6055,6 +6057,177 @@ document.getElementById('btn-report-ore-pdf').addEventListener('click', () => {
   doc.save(`report-ore-${todayISO()}.pdf`);
 });
 
+// ── Materiale: MATERIALE_LIST (materiale-data.js) è il seed statico
+// importato una tantum dall'indice del Drive; le modifiche dell'utente
+// (aggiunte/modifiche/eliminazioni) vivono come overlay in Firestore
+// (DB.getMaterialeUser/saveMaterialeUser — vedi db.js) invece di riscrivere
+// il file statico. I file restano su Drive: qui c'è solo il link, nessun
+// embed/anteprima incorporata nel sito.
+const MATERIALE_CATEGORIES = ['Presentazioni', 'Educazione civica', 'CLIL', 'Approfondimenti', 'Progetti interdisciplinari'];
+const MATERIALE_GROUP_FIELDS = {
+  categoria: { get: r => r.categoria },
+  argomento: { get: r => r.argomento || '—' },
+};
+const MATERIALE_OPEN_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+
+// Seed (meno gli eliminati, con le modifiche applicate) + elementi aggiunti
+function materialeAll() {
+  const u = DB.getMaterialeUser();
+  const deleted = new Set(u.deleted || []);
+  const edited = u.edited || {};
+  const base = MATERIALE_LIST.filter(r => !deleted.has(r.id)).map(r => edited[r.id] ? { ...r, ...edited[r.id] } : r);
+  return [...base, ...(u.added || [])];
+}
+function materialeIsSeed(id) { return MATERIALE_LIST.some(r => r.id === id); }
+
+function materialeFiltered() {
+  const q = state.search;
+  const list = materialeAll();
+  if (!q) return list;
+  return list.filter(r => `${r.titolo} ${r.categoria} ${r.materia} ${r.argomento}`.toLowerCase().includes(q));
+}
+function materialeRowHtml(r) {
+  return `
+    <tr data-id="${escHtml(r.id)}">
+      <td>${escHtml(r.titolo)}</td>
+      <td><span class="mat-chip" style="--mat-color:${colorOfName(r.categoria)}">${escHtml(r.categoria)}</span></td>
+      <td>${r.materia ? escHtml(r.materia) : '—'}</td>
+      <td>${r.argomento ? escHtml(r.argomento) : '—'}</td>
+      <td class="vt-actions">
+        <a class="grade-meet" href="${escHtml(r.link)}" target="_blank" rel="noopener noreferrer" title="Apri il documento (Drive)">${MATERIALE_OPEN_ICON}</a>
+        <button class="grade-edit" data-id="${escHtml(r.id)}" title="Modifica">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="grade-rm" data-id="${escHtml(r.id)}" title="Elimina">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </td>
+    </tr>`;
+}
+const MATERIALE_THEAD = `
+    <th>Titolo</th>
+    <th>Categoria</th>
+    <th>Materia</th>
+    <th>Argomento</th>
+    <th></th>`;
+// Colonne a larghezza fissa e uguale sia nella tabella piatta sia in ognuno
+// dei panel di raggruppamento (senza, ogni <table> raggruppata si
+// auto-dimensiona sul proprio contenuto e le colonne finiscono disallineate
+// da un gruppo all'altro) — vedi .materiale-table in style.css.
+function renderMateriale() {
+  syncRaggruppaBtn('materiale');
+  const rows = materialeFiltered().slice().sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'));
+  document.getElementById('materiale-count').textContent = `${rows.length} element${rows.length === 1 ? 'o' : 'i'}`;
+
+  const wrap = document.getElementById('materiale-wrap');
+  const panel = wrap.closest('.table-panel');
+  const groupsWrap = document.getElementById('materiale-groups');
+  const empty = document.getElementById('materiale-empty');
+
+  if (!rows.length) {
+    wrap.innerHTML = ''; panel.classList.add('hidden');
+    groupsWrap.classList.add('hidden'); groupsWrap.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  let activeContainer;
+  const groupField = state.raggruppa.materiale;
+  if (groupField) {
+    panel.classList.add('hidden');
+    wrap.innerHTML = '';
+    groupsWrap.classList.remove('hidden');
+    groupsWrap.innerHTML = groupedTablePanels(rows, MATERIALE_GROUP_FIELDS[groupField].get, MATERIALE_THEAD, materialeRowHtml, 'materiale-table', { pageKeyPrefix: 'materiale-' + groupField });
+    activeContainer = groupsWrap;
+  } else {
+    panel.classList.remove('hidden');
+    groupsWrap.classList.add('hidden'); groupsWrap.innerHTML = '';
+    wrap.innerHTML = `<table class="voti-table materiale-table"><thead><tr>${MATERIALE_THEAD}</tr></thead><tbody>${rows.map(materialeRowHtml).join('')}</tbody></table>`;
+    activeContainer = wrap;
+  }
+
+  activeContainer.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', () => {
+    const rec = materialeAll().find(r => r.id === btn.dataset.id);
+    if (rec) openMaterialeModal(rec);
+  }));
+  activeContainer.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', () => materialeDelete(btn.dataset.id)));
+}
+
+function materialeFormBody(r) {
+  return `
+    <label class="vf-label">Titolo<input class="vf-input" id="mt-titolo" value="${escHtml(r.titolo || '')}"/></label>
+    <div class="vf-row">
+      <label class="vf-label">Categoria
+        <select class="vf-input" id="mt-categoria">
+          ${MATERIALE_CATEGORIES.map(c => `<option value="${escHtml(c)}" ${(r.categoria || MATERIALE_CATEGORIES[0]) === c ? 'selected' : ''}>${escHtml(c)}</option>`).join('')}
+        </select>
+      </label>
+      <label class="vf-label">Materia<input class="vf-input" id="mt-materia" value="${escHtml(r.materia || '')}"/></label>
+    </div>
+    <label class="vf-label">Argomento<input class="vf-input" id="mt-argomento" value="${escHtml(r.argomento || '')}"/></label>
+    <label class="vf-label">Link (Drive/Documenti)<input class="vf-input" id="mt-link" value="${escHtml(r.link || '')}" placeholder="https://..."/></label>`;
+}
+let materialeCtx = null; // id in modifica, null = nuovo
+function openMaterialeModal(r) {
+  materialeCtx = r ? r.id : null;
+  document.getElementById('materiale-modal-title').textContent = r ? 'Modifica materiale' : 'Nuovo materiale';
+  document.getElementById('materiale-body').innerHTML = materialeFormBody(r || {});
+  document.getElementById('materiale-delete').classList.toggle('hidden', !r);
+  document.getElementById('materiale-overlay').classList.remove('hidden');
+}
+function closeMaterialeModal() { document.getElementById('materiale-overlay').classList.add('hidden'); materialeCtx = null; }
+document.getElementById('btn-add-materiale').addEventListener('click', () => openMaterialeModal(null));
+document.getElementById('materiale-close').addEventListener('click', closeMaterialeModal);
+document.getElementById('materiale-cancel').addEventListener('click', closeMaterialeModal);
+document.getElementById('materiale-overlay').addEventListener('click', e => { if (e.target.id === 'materiale-overlay') closeMaterialeModal(); });
+
+function materialeCloneOverlay() {
+  const u = DB.getMaterialeUser();
+  return { added: [...(u.added || [])], edited: { ...(u.edited || {}) }, deleted: [...(u.deleted || [])] };
+}
+document.getElementById('materiale-save').addEventListener('click', async () => {
+  const rec = {
+    titolo: document.getElementById('mt-titolo').value.trim(),
+    categoria: document.getElementById('mt-categoria').value,
+    materia: document.getElementById('mt-materia').value.trim(),
+    argomento: document.getElementById('mt-argomento').value.trim(),
+    link: document.getElementById('mt-link').value.trim(),
+  };
+  if (!rec.titolo || !rec.link) { alert('Titolo e link sono obbligatori.'); return; }
+  const overlay = materialeCloneOverlay();
+  if (materialeCtx) {
+    if (materialeIsSeed(materialeCtx)) {
+      overlay.edited[materialeCtx] = rec;
+    } else {
+      const idx = overlay.added.findIndex(a => a.id === materialeCtx);
+      if (idx >= 0) overlay.added[idx] = { id: materialeCtx, ...rec };
+    }
+  } else {
+    overlay.added.push({ id: DB.uid(), ...rec });
+  }
+  await DB.saveMaterialeUser(overlay);
+  closeMaterialeModal();
+  renderView();
+});
+document.getElementById('materiale-delete').addEventListener('click', async () => {
+  if (!materialeCtx) return;
+  await materialeDelete(materialeCtx);
+  closeMaterialeModal();
+});
+async function materialeDelete(id) {
+  if (!confirm('Eliminare questo materiale?')) return;
+  const overlay = materialeCloneOverlay();
+  if (materialeIsSeed(id)) {
+    if (!overlay.deleted.includes(id)) overlay.deleted.push(id);
+    delete overlay.edited[id];
+  } else {
+    overlay.added = overlay.added.filter(a => a.id !== id);
+  }
+  await DB.saveMaterialeUser(overlay);
+  renderView();
+}
+
 // ── Scheda alunno (pagina dedicata, non modale, sempre in sidebar) ───
 function openStudent(id) {
   const s = state.students.find(x => x.id === id);
@@ -6386,6 +6559,31 @@ const formOverlay = document.getElementById('form-overlay');
 let formMode = null; // 'student-new' | 'student-edit' | 'grade' | 'grade-class' | 'classe-meta'
 let formCtx = null;  // contesto extra (es. {anno, classe} per classe-meta)
 
+// Alunni iscritti a (anno, classe) — usato dal form "Modifica classe" per
+// mostrare/gestire il roster (aggiunta/rimozione alunni dalla classe)
+function cmRosterOf(anno, classe) {
+  return state.students.filter(s => s.anni?.[anno]?.classe === classe)
+    .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+}
+function cmRosterRowHtml(s) {
+  return `
+    <div class="gc-row" data-sid="${s.id}">
+      <span class="gc-name">${escHtml(s.cognome)} ${escHtml(s.nome)}</span>
+      <button class="grade-rm" type="button" data-rm-roster title="Rimuovi dalla classe">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`;
+}
+// Ripopola i suggerimenti di "Aggiungi alunno esistente" escludendo chi è
+// già nella lista (nel DOM, non nel DB: riflette le modifiche non ancora salvate)
+function cmSyncAddStudentDatalist() {
+  const rosterList = document.getElementById('cm-roster-list');
+  const inRoster = new Set([...rosterList.querySelectorAll('.gc-row')].map(r => r.dataset.sid));
+  const candidates = state.students.filter(s => !inRoster.has(s.id))
+    .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+  document.getElementById('cm-add-student-list').innerHTML = candidates.map(s => `<option value="${escHtml(s.cognome)} ${escHtml(s.nome)}">`).join('');
+}
+
 function openForm(mode, ctx) {
   formMode = mode;
   formCtx = ctx || null;
@@ -6585,6 +6783,20 @@ function openForm(mode, ctx) {
         <label class="vf-label" style="justify-content:flex-end">
           <button class="btn-ghost" type="button" id="mc-add-btn">Aggiungi</button>
         </label>
+      </div>
+      <label class="vf-label">Alunni della classe
+        <div class="mc-list" id="cm-roster-list">
+          ${cmRosterOf(formCtx.anno, formCtx.classe).map(s => cmRosterRowHtml(s)).join('') || '<p class="stat-sub">Nessun alunno in questa classe.</p>'}
+        </div>
+      </label>
+      <div class="vf-row">
+        <label class="vf-label">Aggiungi alunno esistente
+          <input class="vf-input" id="cm-add-student" list="cm-add-student-list" placeholder="Cognome Nome" autocomplete="off"/>
+          <datalist id="cm-add-student-list"></datalist>
+        </label>
+        <label class="vf-label" style="justify-content:flex-end">
+          <button class="btn-ghost" type="button" id="cm-add-student-btn">Aggiungi</button>
+        </label>
       </div>`;
 
     function addMateria() {
@@ -6610,6 +6822,40 @@ function openForm(mode, ctx) {
       e.stopPropagation();
       addMateria();
     });
+
+    // Alunni della classe: la lista nel DOM è la fonte di verità (come le
+    // materie sopra) — aggiungere/togliere una riga qui non tocca subito il
+    // DB, solo al Salva del form si calcola il differenziale rispetto alla
+    // classe attuale (vedi ramo 'classe-meta' del salvataggio).
+    const rosterList = document.getElementById('cm-roster-list');
+    rosterList.addEventListener('click', e => {
+      const btn = e.target.closest('[data-rm-roster]');
+      if (!btn) return;
+      btn.closest('.gc-row').remove();
+      if (!rosterList.querySelector('.gc-row')) rosterList.innerHTML = '<p class="stat-sub">Nessun alunno in questa classe.</p>';
+      cmSyncAddStudentDatalist();
+    });
+    function addStudentToRoster() {
+      const inp = document.getElementById('cm-add-student');
+      const q = inp.value.trim().toLowerCase();
+      if (!q) return;
+      const inRoster = new Set([...rosterList.querySelectorAll('.gc-row')].map(r => r.dataset.sid));
+      const match = state.students.find(s => !inRoster.has(s.id) && `${s.cognome} ${s.nome}`.trim().toLowerCase() === q);
+      if (!match) { alert('Alunno non trovato: scegli un nome dai suggerimenti.'); return; }
+      const empty = rosterList.querySelector('.stat-sub'); if (empty) empty.remove();
+      rosterList.insertAdjacentHTML('beforeend', cmRosterRowHtml(match));
+      inp.value = '';
+      inp.focus();
+      cmSyncAddStudentDatalist();
+    }
+    document.getElementById('cm-add-student-btn').addEventListener('click', addStudentToRoster);
+    document.getElementById('cm-add-student').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      e.stopPropagation();
+      addStudentToRoster();
+    });
+    cmSyncAddStudentDatalist();
   } else {
     const edit = mode === 'student-edit';
     title.textContent = edit ? 'Modifica alunno' : 'Nuovo alunno';
@@ -6728,6 +6974,28 @@ async function saveForm() {
       const indirizzo = val('cm-indirizzo');
       const materie = [...document.querySelectorAll('#mc-list input[type=checkbox]:checked')].map(i => i.value);
       const { anno: metaAnno, classe: metaClasse } = formCtx; // catturati prima di closeForm(), che azzera formCtx
+
+      // Alunni: confronta il roster nel DOM (dopo le eventuali aggiunte/
+      // rimozioni fatte nel form) con quello attuale sul DB, e applica solo
+      // la differenza. Rimuovere = classe '' per quell'anno (l'alunno resta
+      // iscritto, mantiene i voti di quell'anno, semplicemente non è più
+      // assegnato a nessuna classe finché non lo si riassegna); non è
+      // un'eliminazione dell'iscrizione.
+      const rosterIds = new Set([...document.querySelectorAll('#cm-roster-list .gc-row')].map(r => r.dataset.sid));
+      const currentIds = new Set(cmRosterOf(metaAnno, metaClasse).map(s => s.id));
+      const changed = [];
+      currentIds.forEach(id => {
+        if (rosterIds.has(id)) return;
+        const s = state.students.find(x => x.id === id);
+        if (s?.anni?.[metaAnno]) { s.anni[metaAnno].classe = ''; changed.push(s); }
+      });
+      rosterIds.forEach(id => {
+        if (currentIds.has(id)) return;
+        const s = state.students.find(x => x.id === id);
+        if (s) { DB.enroll(s, metaAnno, metaClasse); changed.push(s); }
+      });
+      if (changed.length) await DB.putMany(changed);
+
       await DB.setClasseMeta(metaAnno, metaClasse, { istituto, indirizzo, materie });
       closeForm();
       renderAll();
