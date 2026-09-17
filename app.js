@@ -60,12 +60,12 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'coordinamento', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative', bonusmalus: 'Bonus/Malus',
   bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
-  'report-os': 'Report Orali/Scritti', materiale: 'Materiale',
+  'report-os': 'Report Orali/Scritti', materiale: 'Materiale', coordinamento: 'Coordinamento',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
 const TIPI_APPUNTAMENTO = {
@@ -653,7 +653,7 @@ function renderView() {
     state.view === 'dashboard' || state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
     || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo'
-    || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os');
+    || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os' || state.view === 'coordinamento');
   document.getElementById('dash-toolbar').classList.toggle('hidden', state.view !== 'dashboard');
   document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report' && state.view !== 'report-os');
   document.getElementById('filter-alunno-report').classList.toggle('hidden', state.view !== 'report');
@@ -671,7 +671,7 @@ function renderView() {
     bonusmalus: renderBonusMalus,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
-    'report-os': renderReportOS, materiale: renderMateriale,
+    'report-os': renderReportOS, materiale: renderMateriale, coordinamento: renderCoordinamento,
   };
   try {
     renderers[state.view]();
@@ -1696,10 +1696,10 @@ function classeDetailVerifiche(target, stu) {
   return out;
 }
 
-function renderClasseVerifiche(target, stu) {
+function renderClasseVerifiche(target, stu, elId = 'cd-verifiche-list') {
   const items = classeDetailVerifiche(target, stu)
     .sort((a, b) => a.data === b.data ? (+a.ora || 0) - (+b.ora || 0) : b.data.localeCompare(a.data));
-  const el = document.getElementById('cd-verifiche-list');
+  const el = document.getElementById(elId);
   if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessuna verifica o interrogazione registrata.</p>`; return; }
   // A sinistra data - titolo, a destra la chip tipologia (stessa struttura
   // .dash-item-top del pannello dashboard "Prossimi appuntamenti e colloqui")
@@ -1742,6 +1742,206 @@ document.getElementById('btn-classe-elimina').addEventListener('click', async ()
   } catch (err) {
     alert('Errore durante l\'eliminazione: ' + err.message);
   }
+});
+
+// ── Coordinamento: riepilogo di una classe (senza voti) + una o più
+// tabelle libere, elencate a fisarmonica (nome modificabile in testata,
+// clic per espandere), una riga per alunno, colonne definite dall'utente
+// (checkbox/data/testo/numero) — per tracciare adempimenti/scadenze, non
+// per registrare voti. Ogni cella/nome si salva da sola al cambio, niente
+// pulsante "Salva" a parte.
+const COORD_COL_TYPES = { checkbox: 'Casella di controllo', data: 'Data', testo: 'Testo', numero: 'Numero' };
+let coordAnno = null, coordClasse = null, coordData = null; // { tables: [{id,nome,columns,values}] } della classe/anno correnti
+const coordExpanded = new Set(); // id delle tabelle aperte (per tutta la sessione, non solo l'ultima visita)
+
+function renderCoordinamento() {
+  const target = classeDetailTarget();
+  const ready = target.mode === 'single';
+  document.getElementById('coord-empty').classList.toggle('hidden', ready);
+  document.getElementById('coord-content').classList.toggle('hidden', !ready);
+  if (!ready) return;
+
+  const { anno, classe } = target;
+  const { stu } = classeDetailScope(target);
+  coordAnno = anno; coordClasse = classe;
+
+  document.getElementById('coord-title').textContent = `Classe ${classe}`;
+  const meta = DB.getClasseMeta(anno, classe);
+  document.getElementById('coord-sub').textContent = [meta.istituto, meta.indirizzo, anno].filter(Boolean).join(' · ') || anno;
+
+  const pdp = stu.filter(s => s.profilo === 'PDP').length;
+  const pei = stu.filter(s => s.profilo === 'PEI').length;
+  document.getElementById('coord-stat-grid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Alunni</div>
+      <div class="stat-value">${stu.length}</div>
+      <div class="stat-sub">${pdp} PDP · ${pei} PEI</div>
+    </div>`;
+
+  renderClasseVerifiche(target, stu, 'coord-verifiche-list');
+
+  coordData = DB.getCoordinamento(anno, classe);
+  renderCoordTables();
+}
+
+function coordRosterOf() { return cmRosterOf(coordAnno, coordClasse); }
+
+async function coordPersist() {
+  await DB.saveCoordinamento(coordAnno, coordClasse, coordData);
+}
+
+function renderCoordTables() {
+  const list = document.getElementById('coord-tables-list');
+  const stu = coordRosterOf();
+  if (!coordData.tables.length) {
+    list.innerHTML = '<p class="stat-sub" style="padding:4px 0">Nessuna tabella ancora: creane una con "+ Tabella".</p>';
+    return;
+  }
+  list.innerHTML = coordData.tables.map(t => coordTableCardHtml(t, stu)).join('');
+
+  list.querySelectorAll('[data-toggle-table]').forEach(head => head.addEventListener('click', e => {
+    if (e.target.closest('.coord-table-name') || e.target.closest('[data-rm-table]')) return;
+    const id = head.dataset.toggleTable;
+    if (coordExpanded.has(id)) coordExpanded.delete(id); else coordExpanded.add(id);
+    renderCoordTables();
+  }));
+  list.querySelectorAll('.coord-table-name').forEach(inp => {
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('change', () => coordRenameTable(inp.dataset.tableId, inp.value));
+  });
+  list.querySelectorAll('[data-rm-table]').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    coordRemoveTable(btn.dataset.rmTable);
+  }));
+  list.querySelectorAll('[data-addcol-table]').forEach(btn => btn.addEventListener('click', () => coordAddColumn(btn.dataset.addcolTable)));
+  list.querySelectorAll('[data-cell]').forEach(inp => inp.addEventListener('change', () => coordSetCell(inp)));
+  list.querySelectorAll('.coord-col-name-input').forEach(inp => inp.addEventListener('change', () => coordRenameColumn(inp)));
+  list.querySelectorAll('[data-rm-col]').forEach(el => el.addEventListener('click', () => coordRemoveColumn(el.dataset.table, el.dataset.rmCol)));
+}
+
+function coordTableCardHtml(t, stu) {
+  const open = coordExpanded.has(t.id);
+  return `
+  <div class="coord-table-card ${open ? 'open' : ''}" data-table-id="${t.id}">
+    <div class="coord-table-head" data-toggle-table="${t.id}">
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
+      <input class="coord-table-name" data-table-id="${t.id}" value="${escHtml(t.nome)}" placeholder="Nome tabella"/>
+      <span class="stat-sub">${t.columns.length} colonn${t.columns.length === 1 ? 'a' : 'e'}</span>
+      <span class="coord-table-rm" data-rm-table="${t.id}" title="Elimina tabella">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </span>
+    </div>
+    ${open ? coordTableBodyHtml(t, stu) : ''}
+  </div>`;
+}
+function coordTableBodyHtml(t, stu) {
+  if (!stu.length) return `<div class="coord-table-body"><p class="stat-sub">Nessun alunno in questa classe.</p></div>`;
+  const thead = `
+    <th>Alunno</th>
+    ${t.columns.map(c => `
+      <th>
+        <div class="coord-col-head">
+          <input class="coord-col-name-input" data-col="${c.id}" value="${escHtml(c.nome)}" title="${escHtml(COORD_COL_TYPES[c.tipo] || c.tipo)}"/>
+          <span class="coord-col-rm" data-table="${t.id}" data-rm-col="${c.id}" title="Elimina colonna (perde i dati inseriti)">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+        </div>
+      </th>`).join('')}`;
+  const rowHtml = s => {
+    const v = t.values[s.id] || {};
+    return `
+    <tr data-sid="${s.id}">
+      <td>${escHtml(s.cognome)} ${escHtml(s.nome)}</td>
+      ${t.columns.map(c => `<td>${coordCellHtml(t.id, c, v[c.id])}</td>`).join('')}
+    </tr>`;
+  };
+  return `
+    <div class="coord-table-body">
+      <div class="coord-addcol">
+        <select class="vf-input" data-newcol-type="${t.id}">
+          ${Object.entries(COORD_COL_TYPES).map(([k, l]) => `<option value="${k}">${escHtml(l)}</option>`).join('')}
+        </select>
+        <button class="btn-ghost" data-addcol-table="${t.id}" type="button">+ Colonna</button>
+      </div>
+      <div class="table-wrap"><table class="voti-table coord-table"><thead><tr>${thead}</tr></thead><tbody>${stu.map(rowHtml).join('')}</tbody></table></div>
+    </div>`;
+}
+function coordCellHtml(tableId, col, value) {
+  const id = `data-table="${tableId}" data-cell="${col.id}"`;
+  if (col.tipo === 'checkbox') return `<input type="checkbox" ${id} ${value ? 'checked' : ''}/>`;
+  if (col.tipo === 'data') return `<input type="date" ${id} value="${escHtml(value || '')}"/>`;
+  if (col.tipo === 'numero') return `<input type="number" ${id} value="${escHtml(value ?? '')}"/>`;
+  return `<input type="text" ${id} value="${escHtml(value || '')}"/>`;
+}
+async function coordSetCell(inp) {
+  const table = coordData.tables.find(t => t.id === inp.dataset.table);
+  if (!table) return;
+  const sid = inp.closest('tr').dataset.sid;
+  const val = inp.type === 'checkbox' ? inp.checked : inp.value;
+  (table.values[sid] ||= {})[inp.dataset.cell] = val;
+  await coordPersist();
+}
+async function coordAddColumn(tableId) {
+  const table = coordData.tables.find(t => t.id === tableId);
+  if (!table) return;
+  const tipo = document.querySelector(`[data-newcol-type="${tableId}"]`).value;
+  const n = table.columns.length + 1;
+  table.columns.push({ id: DB.uid(), tipo, nome: `Colonna ${n}` });
+  await coordPersist();
+  coordExpanded.add(tableId);
+  renderCoordTables();
+  // Il nome è appena stato inserito: seleziona subito il testo nell'intestazione
+  // appena creata, pronto per essere sovrascritto digitando (niente input separato prima)
+  const newInput = document.querySelector(`.coord-col-name-input[data-col="${table.columns[table.columns.length - 1].id}"]`);
+  if (newInput) { newInput.focus(); newInput.select(); }
+}
+async function coordRenameColumn(inp) {
+  const th = inp.closest('th');
+  const rmBtn = th.querySelector('[data-rm-col]');
+  const table = coordData.tables.find(t => t.id === rmBtn.dataset.table);
+  const col = table?.columns.find(c => c.id === inp.dataset.col);
+  if (!col) return;
+  col.nome = inp.value.trim() || col.nome;
+  inp.value = col.nome;
+  await coordPersist();
+}
+async function coordRemoveColumn(tableId, colId) {
+  const table = coordData.tables.find(t => t.id === tableId);
+  if (!table) return;
+  const col = table.columns.find(c => c.id === colId);
+  if (!col) return;
+  if (!confirm(`Eliminare la colonna "${col.nome}"? I dati inseriti in questa colonna andranno persi.`)) return;
+  table.columns = table.columns.filter(c => c.id !== colId);
+  Object.values(table.values).forEach(v => { delete v[colId]; });
+  await coordPersist();
+  renderCoordTables();
+}
+async function coordRenameTable(tableId, value) {
+  const table = coordData.tables.find(t => t.id === tableId);
+  if (!table) return;
+  table.nome = value.trim() || table.nome;
+  await coordPersist();
+  renderCoordTables();
+}
+async function coordRemoveTable(tableId) {
+  const table = coordData.tables.find(t => t.id === tableId);
+  if (!table) return;
+  if (!confirm(`Eliminare la tabella "${table.nome}"? Tutti i dati inseriti andranno persi.`)) return;
+  coordData.tables = coordData.tables.filter(t => t.id !== tableId);
+  coordExpanded.delete(tableId);
+  await coordPersist();
+  renderCoordTables();
+}
+document.getElementById('coord-back').addEventListener('click', () => setView('classi'));
+document.getElementById('coord-add-table-btn').addEventListener('click', async () => {
+  const n = coordData.tables.length + 1;
+  const id = DB.uid();
+  coordData.tables.push({ id, nome: `Tabella ${n}`, columns: [], values: {} });
+  coordExpanded.add(id);
+  await coordPersist();
+  renderCoordTables();
+  const newInput = document.querySelector(`.coord-table-name[data-table-id="${id}"]`);
+  if (newInput) { newInput.focus(); newInput.select(); }
 });
 
 // ── Promozione classe (singola e di gruppo) ──────────────────────────

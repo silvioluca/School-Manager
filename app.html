@@ -114,6 +114,10 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="10" x2="20" y2="10"/></svg>
             Scheda classe
           </button>
+          <button class="subject-btn subject-btn-sub" data-view="coordinamento">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><polyline points="16 11 18 13 22 9"/></svg>
+            Coordinamento
+          </button>
         </div>
       </div>
 
@@ -504,6 +508,46 @@
             </div>
           </div>
           <div class="table-wrap" id="cd-grid-wrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Coordinamento: riepilogo classe (non voti) + tabella libera per
+         tracciare scadenze/adempimenti, una riga per alunno -->
+    <section id="view-coordinamento" class="hidden">
+      <div class="empty-state hidden" id="coord-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>Scegli anno e classe</h3>
+        <p>Il Coordinamento riguarda una classe specifica: imposta sia l'anno sia la classe nei filtri in alto.</p>
+      </div>
+      <div id="coord-content">
+        <div class="view-toolbar">
+          <button class="btn-icon btn-back" id="coord-back" title="Torna alle classi">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
+        </div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="cm-header">
+            <div>
+              <h2 class="modal-title" id="coord-title"></h2>
+              <div class="cm-sub" id="coord-sub"></div>
+            </div>
+          </div>
+        </div>
+        <div class="stat-grid" id="coord-stat-grid" style="margin-bottom:16px"></div>
+        <div class="panel" style="margin-bottom:16px">
+          <div class="panel-head"><span class="panel-title">Verifiche e interrogazioni</span></div>
+          <div class="dash-list" id="coord-verifiche-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Tabelle di coordinamento</span>
+            <button class="btn-ghost" id="coord-add-table-btn" type="button">+ Tabella</button>
+          </div>
+          <div id="coord-tables-list" class="coord-tables-list"></div>
         </div>
       </div>
     </section>

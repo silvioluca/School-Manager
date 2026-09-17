@@ -83,6 +83,11 @@ const DB = (() => {
   let _cache = null;    // array alunni ricomposti (stesso riferimento usato dall'app)
   let _loaded = {};     // id → { anag: jsonStr, anni: { anno: jsonStr } } — stato salvato, per il diff
   let _classiMeta = {}; // "anno|classe" → { istituto, indirizzo, materie: [...] } — info di classe, non di alunno
+  // "anno|classe" → { columns: [{id,tipo,nome}], values: { [studentId]: { [colId]: valore } } }
+  // Tabella di coordinamento: colonne definite dall'utente (checkbox/data/
+  // testo/numero), una riga per alunno della classe (il roster non si
+  // duplica qui, si legge sempre da s.anni[anno].classe).
+  let _coordinamento = {};
   let _orario = {};     // anno → [ {id, giorno, ora, materia, classe}, … ] — orario settimanale del docente
   let _lezioni = {};    // anno → [ {id, data, ora, classe, materia, argomento, note}, … ] — registro lezioni
   let _rubriche = [];   // [ {id, nome, indicatori: [...]}, … ] — libreria griglie di valutazione
@@ -163,6 +168,7 @@ const DB = (() => {
       _cache = p.students || [];
       _loaded = p.loaded || {};
       _classiMeta = p.classiMeta || {};
+      _coordinamento = p.coordinamento || {};
       _orario = p.orario || {};
       _lezioni = p.lezioni || {};
       _rubriche = p.rubriche || [];
@@ -174,7 +180,7 @@ const DB = (() => {
     } catch { return false; }
   }
   function _cacheSave() {
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos, materialeUser: _materialeUser })); } catch {}
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, coordinamento: _coordinamento, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos, materialeUser: _materialeUser })); } catch {}
   }
   function _cacheDrop() {
     try { sessionStorage.removeItem(CACHE_KEY); } catch {}
@@ -302,6 +308,9 @@ const DB = (() => {
       }
     }
 
+    const coordDoc = snap.docs.find(d => d.id === 'coordinamento');
+    _coordinamento = coordDoc ? JSON.parse(coordDoc.data().json) : {};
+
     const orarioDoc = snap.docs.find(d => d.id === 'orario');
     _orario = orarioDoc ? JSON.parse(orarioDoc.data().json) : {};
 
@@ -360,6 +369,26 @@ const DB = (() => {
     if (hasContent) _classiMeta[key] = { istituto: istituto || '', indirizzo: indirizzo || '', materie: materie || [] };
     else delete _classiMeta[key];
     await packs().doc('classi-meta').set({ json: JSON.stringify(_classiMeta) });
+    _cacheDrop();
+  }
+
+  // ── Coordinamento: una o più tabelle libere per classe (nome + colonne
+  // definite dall'utente, una riga per alunno) ─────────────────────────
+  function getCoordinamento(anno, classe) {
+    const raw = _coordinamento[classeMetaKey(anno, classe)];
+    if (!raw) return { tables: [] };
+    if (raw.tables) return raw;
+    // Retrocompatibilità: il formato precedente aveva un'unica tabella
+    // implicita (columns/values direttamente sull'oggetto)
+    return { tables: [{ id: 'legacy', nome: 'Tabella', columns: raw.columns || [], values: raw.values || {} }] };
+  }
+  async function saveCoordinamento(anno, classe, data) {
+    if (!_cache) await all();
+    const key = classeMetaKey(anno, classe);
+    const hasContent = data.tables && data.tables.length;
+    if (hasContent) _coordinamento[key] = { tables: data.tables };
+    else delete _coordinamento[key];
+    await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
     _cacheDrop();
   }
 
@@ -686,6 +715,11 @@ const DB = (() => {
       await packs().doc('classi-meta').set({ json: JSON.stringify(_classiMeta) });
       _cacheDrop();
     }
+    if (_coordinamento[key]) {
+      delete _coordinamento[key];
+      await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
+      _cacheDrop();
+    }
     return affected.length;
   }
 
@@ -827,7 +861,7 @@ const DB = (() => {
     return JSON.stringify({
       app: APP, exportedAt: new Date().toISOString(),
       students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos,
-      materialeUser: _materialeUser,
+      materialeUser: _materialeUser, coordinamento: _coordinamento,
     }, null, 2);
   }
 
@@ -879,6 +913,10 @@ const DB = (() => {
       _materialeUser = parsed.materialeUser;
       await packs().doc('materiale-user').set({ json: JSON.stringify(_materialeUser) });
     }
+    if (!Array.isArray(parsed) && parsed.coordinamento) {
+      _coordinamento = parsed.coordinamento;
+      await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
+    }
     _cacheDrop();
     return list.length;
   }
@@ -888,6 +926,7 @@ const DB = (() => {
     newStudent, enroll, addGrade, removeGrade, editGrade, addBonusMalus, removeBonusMalus,
     currentAnno, classeCorrente,
     getClasseMeta, materieOf, indirizzoOf, istitutoOf, materieMapAll, allIstituti, setClasseMeta,
+    getCoordinamento, saveCoordinamento,
     deleteClasse, promuoviClasse,
     getOrario, setOrarioSlots, setOrarioPeriodo, setOrarioSabato,
     getLezioni, addLezione, updateLezione, removeLezione, addLezioniBulk,
