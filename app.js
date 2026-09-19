@@ -21,6 +21,7 @@ const state = {
   besSelected: new Set(),  // id alunno selezionati nell'elenco BES
   colloquiSelected: new Set(), // chiavi "anno|id" selezionate nell'elenco colloqui
   appuntamentiSelected: new Set(), // chiavi "anno|id" selezionate nell'elenco appuntamenti
+  usciteSelected: new Set(), // chiavi "anno|id" selezionate nell'elenco uscite didattiche
   rubricheSelected: new Set(), // id rubrica selezionati nell'elenco rubriche
   todoSelected: new Set(), // id to-do selezionati nell'elenco
   reportMateria: 'all',    // filtro materia nella sezione Report
@@ -36,7 +37,7 @@ const state = {
   todoView: 'kanban',      // 'kanban' | 'elenco'
   calView: 'settimana',    // 'settimana' | 'mese' | 'agenda' — vista attiva nella sezione Calendario
   calRefDate: null,        // data di riferimento (YYYY-MM-DD) per Calendario, indipendente da lezRefDate
-  calFilters: { colloqui: true, appuntamenti: true }, // tipi visibili in Calendario (mai le lezioni: hanno la propria vista)
+  calFilters: { colloqui: true, appuntamenti: true, uscite: true }, // tipi visibili in Calendario (mai le lezioni: hanno la propria vista)
   lezRefDate: null,        // data di riferimento (YYYY-MM-DD) per le viste settimana/calendario
   raggruppa: {             // "Raggruppa" per vista: booleano (solo classe) ovunque
     voti: false, alunni: false, bes: false, compiti: false, colloqui: false,
@@ -60,11 +61,11 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'coordinamento', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'uscite', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'coordinamento', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative', bonusmalus: 'Bonus/Malus',
-  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
+  bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', uscite: 'Uscite didattiche', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
   'report-os': 'Report Orali/Scritti', materiale: 'Materiale', coordinamento: 'Coordinamento',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
@@ -652,7 +653,7 @@ function renderView() {
   document.getElementById('search-wrap').classList.toggle('hidden',
     state.view === 'dashboard' || state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
-    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'calendario' || state.view === 'todo'
+    || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'uscite' || state.view === 'calendario' || state.view === 'todo'
     || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os' || state.view === 'coordinamento');
   document.getElementById('dash-toolbar').classList.toggle('hidden', state.view !== 'dashboard');
   document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report' && state.view !== 'report-os');
@@ -669,7 +670,7 @@ function renderView() {
     dashboard: renderDashboard, alunni: renderAlunni, classi: renderClassi, voti: renderVoti, report: renderReport,
     lezioni: renderLezioni, compiti: renderCompiti, orario: renderOrario, verifiche: renderVerifiche, rubriche: renderRubriche,
     bonusmalus: renderBonusMalus,
-    bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, calendario: renderCalendario, todo: renderTodo,
+    bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, uscite: renderUscite, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
     'report-os': renderReportOS, materiale: renderMateriale, coordinamento: renderCoordinamento,
   };
@@ -769,11 +770,11 @@ function renderDashboardTodo() {
     openTodoModal(DB.getTodos().find(t => t.id === div.dataset.id));
   }));
 }
-// Panel "Prossimi appuntamenti e colloqui" in dashboard: entrambi i tipi
+// Panel "Prossimi appuntamenti, colloqui e uscite" in dashboard: tutti e tre
 // entro 14 giorni da oggi (inclusi), ordinati per data/ora — clic apre la
-// pagina Nota dell'appuntamento/colloquio corrispondente. Usa sempre l'anno
-// reale corrente (come renderDashboardOggi), non il filtro Anno in alto:
-// "prossimi" ha senso solo guardando avanti da oggi.
+// pagina Nota (appuntamento/colloquio) o il modale di modifica (uscita). Usa
+// sempre l'anno reale corrente (come renderDashboardOggi), non il filtro
+// Anno in alto: "prossimi" ha senso solo guardando avanti da oggi.
 function renderDashboardApptColloqui() {
   const oggi = todayISO();
   const limite = toISO(addDays(new Date(oggi + 'T00:00:00'), 14));
@@ -795,10 +796,18 @@ function renderDashboardApptColloqui() {
         titolo: s ? `${s.cognome} ${s.nome}` : (c.partecipanti || 'Colloquio'), tipoLabel: 'Colloquio',
       });
     });
+    DB.getUscite(anno).forEach(u => {
+      if (!(u.data >= oggi && u.data <= limite)) return;
+      items.push({
+        kind: 'uscita', anno, id: u.id, data: u.data, ora: u.oraInizio, oraFine: u.oraFine,
+        titolo: u.titolo, tipoLabel: 'Uscita didattica',
+      });
+    });
   });
   items.sort((a, b) => (a.data + (a.ora || '')).localeCompare(b.data + (b.ora || '')));
   const el = document.getElementById('dash-appt-colloqui');
-  if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessun appuntamento o colloquio nei prossimi 14 giorni.</p>`; return; }
+  if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessun appuntamento, colloquio o uscita nei prossimi 14 giorni.</p>`; return; }
+  const kindColor = { colloquio: 'var(--accent-blue)', appuntamento: 'var(--accent-amber)', uscita: 'var(--accent-green)' };
   // A sinistra data - ora inizio - ora fine - titolo, a destra la chip tipo
   // (stessa struttura .dash-item-top di Lezioni/Compiti, riusata qui)
   el.innerHTML = items.map(it => {
@@ -809,12 +818,14 @@ function renderDashboardApptColloqui() {
       <div class="dash-item-top">
         <span class="dash-item-ora">${escHtml(whenLabel)}</span>
         <span class="dash-item-titolo">${escHtml(it.titolo)}</span>
-        <span class="mat-chip" style="--mat-color:${it.kind === 'colloquio' ? 'var(--accent-blue)' : 'var(--accent-amber)'}">${escHtml(it.tipoLabel)}</span>
+        <span class="mat-chip" style="--mat-color:${kindColor[it.kind]}">${escHtml(it.tipoLabel)}</span>
       </div>
     </div>`;
   }).join('');
-  el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () =>
-    openItemNote(div.dataset.kind, div.dataset.anno, div.dataset.id)));
+  el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => {
+    if (div.dataset.kind === 'uscita') openUscita(div.dataset.anno, div.dataset.id);
+    else openItemNote(div.dataset.kind, div.dataset.anno, div.dataset.id);
+  }));
 }
 
 function renderDashboard() {
@@ -4312,7 +4323,7 @@ function appuntamentoFormBody(a) {
       </label>
       <label class="vf-label">Classe (facoltativa)
         <input class="vf-input" id="ap-classe" list="ap-classi-list" value="${escHtml(a.classe || '')}"/>
-        <datalist id="ap-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
+        <datalist id="ap-classi-list">${allClasses(state.students, state.year, 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
       </label>
     </div>
     <div class="vf-row">
@@ -4401,6 +4412,181 @@ document.getElementById('appuntamento-delete').addEventListener('click', async (
     closeAppuntamento();
     renderAll();
     if (prevGcalEventId) GCal.deleteEvent(prevGcalEventId);
+  } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+
+// ── Uscite didattiche: titolo, giorno, ora inizio/fine, classe. Oltre alla
+//    propria sezione, compaiono in Dashboard (mese corrente), Calendario e
+//    Lezioni (posizionate nella scansione oraria se ora inizio/fine sono
+//    specificate — vedi periodiOverlapping più sotto) ──────────────────────
+function usciteRows() {
+  const anni = state.year !== 'all' ? [state.year] : [...new Set([...allYears(), ...DB.getUsciteAnni()])];
+  const rows = [];
+  anni.forEach(anno => DB.getUscite(anno).forEach(u => rows.push({ anno, u })));
+  return rows.sort((x, y) => (x.u.data + (x.u.oraInizio || '')).localeCompare(y.u.data + (y.u.oraInizio || '')));
+}
+function renderUscite() {
+  const rows = usciteRows();
+  document.getElementById('uscite-count').textContent = `${rows.length} uscit${rows.length === 1 ? 'a' : 'e'}`;
+  document.getElementById('uscite-empty').classList.toggle('hidden', !!rows.length);
+  const uscitaRowHtml = ({ anno, u }) => {
+    const ora = u.oraFine ? `${u.oraInizio || '—'}–${u.oraFine}` : (u.oraInizio || '—');
+    return `<tr class="row-selectable ${state.usciteSelected.has(anno + '|' + u.id) ? 'selected' : ''}" data-anno="${escHtml(anno)}" data-id="${u.id}" data-key="${escHtml(anno + '|' + u.id)}">
+            <td class="row-drag" title="Seleziona"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="6" r="1.6"/><circle cx="8" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/><circle cx="16" cy="6" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="16" cy="18" r="1.6"/></svg></td>
+            <td class="vt-mono">${fmtData(u.data)}</td>
+            <td class="vt-mono">${escHtml(ora)}</td>
+            <td>${escHtml((u.classi || []).join(', ') || '—')}</td>
+            <td class="col-hide-m">${escHtml(u.luogo || '—')}</td>
+            <td title="${escHtml([u.titolo, u.note].filter(Boolean).join(' — '))}">${escHtml(u.titolo || '—')}</td>
+            <td class="vt-actions">
+              <button class="grade-edit" data-anno="${escHtml(anno)}" data-id="${u.id}" title="Modifica">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button class="grade-rm" data-anno="${escHtml(anno)}" data-id="${u.id}" title="Elimina uscita">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </td>
+          </tr>`;
+  };
+  const wrap = document.getElementById('uscite-wrap');
+  const panel = wrap.closest('.table-panel');
+  const thead = `<th></th><th>Giorno</th><th>Ora</th><th>Classe</th><th class="col-hide-m">Luogo</th><th>Titolo</th><th></th>`;
+  const visibleKeys = new Set(rows.map(({ anno, u }) => anno + '|' + u.id));
+  [...state.usciteSelected].forEach(k => { if (!visibleKeys.has(k)) state.usciteSelected.delete(k); });
+  updateUsciteBulkBar();
+  const selAllBtn = document.getElementById('btn-uscite-select-all');
+  const allSel = rows.length > 0 && rows.every(({ anno, u }) => state.usciteSelected.has(anno + '|' + u.id));
+  selAllBtn.classList.toggle('active', allSel);
+  selAllBtn.title = allSel ? 'Deseleziona tutto' : 'Seleziona tutto';
+  if (!rows.length) { wrap.innerHTML = ''; panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  wrap.innerHTML = `<table class="voti-table"><thead><tr>${thead}</tr></thead><tbody>${rows.map(uscitaRowHtml).join('')}</tbody></table>`;
+  wrap.querySelectorAll('.grade-edit').forEach(btn => btn.addEventListener('click', e => { e.stopPropagation(); openUscita(btn.dataset.anno, btn.dataset.id); }));
+  wrap.querySelectorAll('.grade-rm').forEach(btn => btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    if (!confirm('Eliminare questa uscita didattica?')) return;
+    try { await DB.removeUscita(btn.dataset.anno, btn.dataset.id); renderAll(); }
+    catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+  }));
+  wrap.querySelectorAll('tr[data-key]').forEach(row => row.addEventListener('click', e => {
+    if (e.target.closest('.grade-edit') || e.target.closest('.grade-rm')) return;
+    const key = row.dataset.key;
+    if (state.usciteSelected.has(key)) state.usciteSelected.delete(key);
+    else state.usciteSelected.add(key);
+    row.classList.toggle('selected');
+    updateUsciteBulkBar();
+    const stillAll = rows.length > 0 && rows.every(({ anno, u }) => state.usciteSelected.has(anno + '|' + u.id));
+    selAllBtn.classList.toggle('active', stillAll);
+    selAllBtn.title = stillAll ? 'Deseleziona tutto' : 'Seleziona tutto';
+  }));
+}
+function updateUsciteBulkBar() {
+  const bar = document.getElementById('uscite-bulk-bar');
+  const n = state.usciteSelected.size;
+  bar.classList.toggle('hidden', n === 0);
+  document.getElementById('uscite-sel-count').textContent = `${n} uscit${n === 1 ? 'a' : 'e'} selezionat${n === 1 ? 'a' : 'e'}`;
+}
+document.getElementById('btn-uscite-elimina-bulk').addEventListener('click', async () => {
+  const keys = [...state.usciteSelected].map(k => k.split('|'));
+  if (!keys.length) return;
+  if (!confirm(`Eliminare ${keys.length} uscit${keys.length === 1 ? 'a' : 'e'}? L'azione è irreversibile.`)) return;
+  try {
+    for (const [anno, id] of keys) await DB.removeUscita(anno, id);
+    state.usciteSelected.clear();
+    renderAll();
+  } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+document.getElementById('btn-uscite-select-all').addEventListener('click', () => {
+  const keys = usciteRows().map(({ anno, u }) => anno + '|' + u.id);
+  const allSel = keys.length > 0 && keys.every(k => state.usciteSelected.has(k));
+  if (allSel) keys.forEach(k => state.usciteSelected.delete(k));
+  else keys.forEach(k => state.usciteSelected.add(k));
+  renderUscite();
+});
+
+// Classi selezionate nel modale in corso (multi-selezione a chip, non un
+// <select multiple>: più leggibile e coerente con lo stile a pillole già
+// usato altrove, es. .cal-legend-chip) — reinizializzato a ogni apertura
+let usSelectedClassi = new Set();
+function uscitaFormBody(u) {
+  usSelectedClassi = new Set(u.classi || []);
+  return `
+    <label class="vf-label">Titolo<input class="vf-input" id="us-titolo" placeholder="es. Visita al museo" value="${escHtml(u.titolo || '')}"/></label>
+    <div class="vf-row">
+      <label class="vf-label">Giorno<input type="date" class="vf-input" id="us-data" value="${escHtml(u.data || todayISO())}"/></label>
+      <label class="vf-label">Luogo<input class="vf-input" id="us-luogo" placeholder="es. Museo civico" value="${escHtml(u.luogo || '')}"/></label>
+    </div>
+    <div class="vf-row">
+      <label class="vf-label">Ora inizio<input type="time" class="vf-input" id="us-ora-inizio" value="${escHtml(u.oraInizio || '')}"/></label>
+      <label class="vf-label">Ora fine<input type="time" class="vf-input" id="us-ora-fine" value="${escHtml(u.oraFine || '')}"/></label>
+    </div>
+    <label class="vf-label">Classi
+      <div class="vf-chip-picker" id="us-classi-picker">${allClasses(state.students, state.year, 'all').map(c => `
+        <button type="button" class="vf-chip-toggle ${usSelectedClassi.has(c) ? 'active' : ''}" data-classe="${escHtml(c)}">${escHtml(c)}</button>`).join('')}
+      </div>
+    </label>
+    <label class="vf-label">Note<textarea class="vf-input" id="us-note" placeholder="Note aggiuntive…">${escHtml(u.note || '')}</textarea></label>`;
+}
+function wireUsClassiPicker() {
+  document.querySelectorAll('#us-classi-picker .vf-chip-toggle').forEach(btn => btn.addEventListener('click', () => {
+    const c = btn.dataset.classe;
+    if (usSelectedClassi.has(c)) usSelectedClassi.delete(c); else usSelectedClassi.add(c);
+    btn.classList.toggle('active', usSelectedClassi.has(c));
+  }));
+}
+let uscitaCtx = null;
+function openUscita(anno, id) {
+  const u = DB.getUscite(anno).find(x => x.id === id);
+  if (!u) return;
+  uscitaCtx = { anno, id };
+  document.getElementById('uscita-title').textContent = 'Modifica uscita didattica';
+  document.getElementById('uscita-body').innerHTML = uscitaFormBody(u);
+  wireUsClassiPicker();
+  document.getElementById('uscita-delete').classList.remove('hidden');
+  document.getElementById('uscita-overlay').classList.remove('hidden');
+}
+document.getElementById('btn-add-uscita').addEventListener('click', () => {
+  uscitaCtx = null;
+  document.getElementById('uscita-title').textContent = 'Nuova uscita didattica';
+  document.getElementById('uscita-body').innerHTML = uscitaFormBody({ data: todayISO() });
+  wireUsClassiPicker();
+  document.getElementById('uscita-delete').classList.add('hidden');
+  document.getElementById('uscita-overlay').classList.remove('hidden');
+});
+function closeUscita() { document.getElementById('uscita-overlay').classList.add('hidden'); uscitaCtx = null; }
+document.getElementById('uscita-close').addEventListener('click', closeUscita);
+document.getElementById('uscita-cancel').addEventListener('click', closeUscita);
+document.getElementById('uscita-overlay').addEventListener('click', e => { if (e.target.id === 'uscita-overlay') closeUscita(); });
+document.getElementById('uscita-save').addEventListener('click', async () => {
+  const val = id => document.getElementById(id)?.value.trim() ?? '';
+  const data = val('us-data');
+  const titolo = val('us-titolo');
+  if (!data) { alert('Il giorno è obbligatorio.'); return; }
+  if (!titolo) { alert('Il titolo è obbligatorio.'); return; }
+  const attrs = { titolo, data, oraInizio: val('us-ora-inizio'), oraFine: val('us-ora-fine'), luogo: val('us-luogo'), classi: [...usSelectedClassi], note: val('us-note') };
+  const anno = annoFromData(data);
+  try {
+    if (uscitaCtx) {
+      if (anno !== uscitaCtx.anno) {
+        await DB.removeUscita(uscitaCtx.anno, uscitaCtx.id);
+        await DB.addUscita(anno, attrs);
+      } else {
+        await DB.updateUscita(uscitaCtx.anno, uscitaCtx.id, attrs);
+      }
+    } else {
+      await DB.addUscita(anno, attrs);
+    }
+    closeUscita();
+    renderAll();
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+});
+document.getElementById('uscita-delete').addEventListener('click', async () => {
+  if (!uscitaCtx) return;
+  if (!confirm('Eliminare questa uscita didattica?')) return;
+  try {
+    await DB.removeUscita(uscitaCtx.anno, uscitaCtx.id);
+    closeUscita();
+    renderAll();
   } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
 });
 
@@ -4587,7 +4773,7 @@ function renderLezioniElenco(rows) {
   }
   empty.classList.add('hidden');
 
-  const classiList = allClasses(state.students, 'all', 'all');
+  const classiList = allClasses(state.students, state.year, 'all');
   const materieList = materieNamesLezioni();
 
   const lezioneRowHtml = ({ anno, l }) => {
@@ -4685,6 +4871,22 @@ function renderLezioniSettimana() {
   appuntamentiRows().forEach(({ anno, a: appt }) => { if (daysSet.has(appt.data)) (apptByDate[appt.data] ||= []).push({ anno, appt }); });
   const hasAppt = Object.keys(apptByDate).length > 0;
 
+  // Uscite didattiche della settimana: se ora inizio/fine sono specificate e
+  // ricadono in una o più fasce della scansione oraria, occupano quelle celle
+  // (stesso trattamento delle lezioni); altrimenti finiscono in una riga extra
+  // come gli appuntamenti (vedi periodiOverlapping più sopra)
+  const usciteByDate = {};
+  usciteRows().forEach(({ anno, u }) => {
+    if (!daysSet.has(u.data)) return;
+    (usciteByDate[u.data] ||= []).push({ anno, u, periodi: periodiOverlapping(anno, u.oraInizio, u.oraFine) });
+  });
+  const usciteExtraByDate = {};
+  Object.entries(usciteByDate).forEach(([data, items]) => {
+    const senzaOra = items.filter(it => !it.periodi.length);
+    if (senzaOra.length) usciteExtraByDate[data] = senzaOra;
+  });
+  const hasUsciteExtra = Object.keys(usciteExtraByDate).length > 0;
+
   // Griglia CSS (non <table>): con table-layout anche "fixed" un contenuto
   // interno senza vincoli (testo lungo di classe/materia) può comunque forzare
   // una colonna più larga delle altre — con minmax(0,1fr) sulle colonne-giorno
@@ -4702,13 +4904,22 @@ function renderLezioniSettimana() {
       return `<div class="week-extra-cell">${items.map(({ anno: a, appt }) => `
           <div class="week-appt-chip" data-anno="${escHtml(a)}" data-id="${appt.id}" title="${escHtml(TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}${appt.oggetto ? ' · ' + escHtml(appt.oggetto) : ''}">${appt.ora ? escHtml(appt.ora) + ' · ' : ''}${escHtml(appt.oggetto || TIPI_APPUNTAMENTO[appt.tipo] || appt.tipo)}</div>`).join('')}</div>`;
     }).join('')}` : ''}
+    ${hasUsciteExtra ? `<div class="week-extra-label">Uscite</div>${days.map(d => {
+      const iso = toISO(d);
+      const items = usciteExtraByDate[iso] || [];
+      return `<div class="week-extra-cell">${items.map(({ anno: a, u }) => `
+          <div class="week-uscita-chip" data-anno="${escHtml(a)}" data-id="${u.id}" title="${escHtml([u.titolo, (u.classi || []).join(', '), u.luogo].filter(Boolean).join(' · '))}">${escHtml(u.titolo)}</div>`).join('')}</div>`;
+    }).join('')}` : ''}
     ${[...Array(ORE_MAX)].map((_, i) => {
       const ora = i + 1;
       const last = i === ORE_MAX - 1;
       return `<div class="week-ora-label ${last ? 'no-border' : ''}">${ora}ª</div>${days.map(d => {
         const iso = toISO(d);
         const cellRows = (byDate[iso] || []).filter(({ l }) => (+l.ora || 0) === ora);
+        const usciteCell = (usciteByDate[iso] || []).filter(it => it.periodi.includes(ora));
         return `<div class="week-cell ${last ? 'no-border' : ''}">
+            ${usciteCell.map(({ anno: a, u }) => `
+              <div class="week-uscita-chip week-uscita-chip-cell" data-anno="${escHtml(a)}" data-id="${u.id}" title="${escHtml([u.titolo, (u.classi || []).join(', '), u.luogo].filter(Boolean).join(' · '))}">${escHtml(u.titolo)}</div>`).join('')}
             ${cellRows.map(({ anno: a, l }) => `
               <div class="lez-card" data-anno="${escHtml(a)}" data-id="${l.id}" style="--cls-color:${colorOfClasse(l.classe)}">
                 <div class="lc-top">
@@ -4718,7 +4929,7 @@ function renderLezioniSettimana() {
                 ${l.materia ? `<div class="lc-materia-txt">${escHtml(l.materia)}</div>` : ''}
                 ${l.argomento ? `<div class="lc-arg">${escHtml(l.argomento)}</div>` : ''}
               </div>`).join('')}
-            ${!cellRows.length ? `<div class="week-add" data-date="${iso}" data-ora="${ora}">+</div>` : ''}
+            ${!cellRows.length && !usciteCell.length ? `<div class="week-add" data-date="${iso}" data-ora="${ora}">+</div>` : ''}
           </div>`;
       }).join('')}`;
     }).join('')}
@@ -4730,6 +4941,8 @@ function renderLezioniSettimana() {
     b.addEventListener('click', () => openLezioneNew(b.dataset.date, b.dataset.ora)));
   document.querySelectorAll('#lez-week-wrap .week-appt-chip').forEach(c =>
     c.addEventListener('click', () => openAppuntamento(c.dataset.anno, c.dataset.id)));
+  document.querySelectorAll('#lez-week-wrap .week-uscita-chip').forEach(c =>
+    c.addEventListener('click', () => openUscita(c.dataset.anno, c.dataset.id)));
   renderWeekNowLine();
 }
 // Linea rossa dell'ora corrente nella vista Settimana: usa le fasce orarie
@@ -4777,6 +4990,27 @@ setInterval(() => {
   if (state.view === 'lezioni' && state.lezView === 'settimana') renderWeekNowLine();
 }, 60000);
 
+// Ore della scansione oraria (1..ORE_MAX) che si sovrappongono, anche solo
+// parzialmente, alla fascia [oraInizio, oraFine] di un'uscita didattica —
+// stessa logica di renderWeekNowLine (fasce da DB.getOrario(anno).periodi),
+// usata per posizionare l'uscita nella cella giusta della griglia Settimana
+function periodiOverlapping(anno, oraInizio, oraFine) {
+  if (!oraInizio || !oraFine) return [];
+  const { periodi } = DB.getOrario(anno);
+  const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+  const uStart = toMin(oraInizio), uEnd = toMin(oraFine);
+  if (uEnd <= uStart) return [];
+  const result = [];
+  for (let ora = 1; ora <= ORE_MAX; ora++) {
+    const p = periodi[ora];
+    if (!p?.inizio || !p?.fine) continue;
+    const pStart = toMin(p.inizio), pEnd = toMin(p.fine);
+    if (pEnd <= pStart) continue;
+    if (pStart < uEnd && pEnd > uStart) result.push(ora);
+  }
+  return result;
+}
+
 function renderLezioniCalendario() {
   if (!state.lezRefDate) state.lezRefDate = todayISO();
   const ref = new Date(state.lezRefDate + 'T00:00:00');
@@ -4789,6 +5023,8 @@ function renderLezioniCalendario() {
   // Appuntamenti (collegi/consigli di classe/incontri): stesse celle delle
   // lezioni, distinti per colore (vedi sezione "Appuntamenti")
   appuntamentiRows().forEach(({ a }) => { (lezByDay[a.data] ||= []).push({ tipo: 'appuntamento', a }); });
+  // Uscite didattiche: stesse celle, colore proprio
+  usciteRows().forEach(({ u }) => { (lezByDay[u.data] ||= []).push({ tipo: 'uscita', u }); });
 
   // Stessi giorni "attivi" di Orario/Settimana: mai la domenica, niente
   // sabato se disattivato nelle impostazioni orario per quell'anno
@@ -4804,9 +5040,12 @@ function renderLezioniCalendario() {
   const today = todayISO();
   const CAL_MAX_SHOWN = 5;
 
-  const itemChipHtml = item => item.tipo === 'lezione'
-    ? `<div class="cal-lesson" style="--cls-color:${colorOfClasse(item.l.classe)}" title="${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · '))}">${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · ') || '—')}</div>`
-    : `<div class="cal-lesson" style="--cls-color:var(--accent-amber)" title="${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}${item.a.oggetto ? ' · ' + escHtml(item.a.oggetto) : ''}">${item.a.ora ? escHtml(item.a.ora) + ' · ' : ''}${escHtml(item.a.oggetto || TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}</div>`;
+  const itemChipHtml = item => {
+    if (item.tipo === 'lezione') return `<div class="cal-lesson" style="--cls-color:${colorOfClasse(item.l.classe)}" title="${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · '))}">${escHtml([item.l.classe, item.l.materia, item.l.argomento].filter(Boolean).join(' · ') || '—')}</div>`;
+    if (item.tipo === 'appuntamento') return `<div class="cal-lesson" style="--cls-color:var(--accent-amber)" title="${escHtml(TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}${item.a.oggetto ? ' · ' + escHtml(item.a.oggetto) : ''}">${item.a.ora ? escHtml(item.a.ora) + ' · ' : ''}${escHtml(item.a.oggetto || TIPI_APPUNTAMENTO[item.a.tipo] || item.a.tipo)}</div>`;
+    const oraLabel = item.u.oraFine ? `${item.u.oraInizio || '—'}–${item.u.oraFine}` : item.u.oraInizio;
+    return `<div class="cal-lesson" style="--cls-color:var(--accent-green)" title="${escHtml([item.u.titolo, (item.u.classi || []).join(', '), item.u.luogo].filter(Boolean).join(' · '))}">${oraLabel ? escHtml(oraLabel) + ' · ' : ''}${escHtml(item.u.titolo)}</div>`;
+  };
   const dayCellHtml = d => {
     const iso = toISO(d);
     const dayItems = lezByDay[iso] || [];
@@ -4888,10 +5127,15 @@ function calEventsFor(sources) {
     label: a.oggetto || TIPI_APPUNTAMENTO[a.tipo] || a.tipo,
     sub: TIPI_APPUNTAMENTO[a.tipo] || a.tipo, color: 'var(--accent-amber)',
   }));
+  if (sources.uscite) usciteRows().forEach(({ anno, u }) => rows.push({
+    tipo: 'uscita', anno, id: u.id, data: u.data, ora: u.oraInizio || '', sortOra: u.oraInizio || '',
+    label: u.titolo, sub: [(u.classi || []).join(', '), u.luogo].filter(Boolean).join(' · '), color: 'var(--accent-green)',
+  }));
   return rows.sort((x, y) => (x.data + x.sortOra).localeCompare(y.data + y.sortOra));
 }
 function openCalEvent(ev) {
   if (ev.tipo === 'colloquio') openColloquio(ev.anno, ev.id);
+  else if (ev.tipo === 'uscita') openUscita(ev.anno, ev.id);
   else openAppuntamento(ev.anno, ev.id);
 }
 function renderCalendario() {
@@ -5094,7 +5338,7 @@ function lezioneFormBody(l, anno) {
     <div class="vf-row">
       <label class="vf-label">Classe
         <input class="vf-input" id="lz-classe" list="lz-classi-list" value="${escHtml(classe)}"/>
-        <datalist id="lz-classi-list">${allClasses(state.students, 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
+        <datalist id="lz-classi-list">${allClasses(state.students, anno, 'all').map(c => `<option value="${escHtml(c)}">`).join('')}</datalist>
       </label>
       <label class="vf-label">Materia
         <input class="vf-input" id="lz-materia" list="lz-materie-list" value="${escHtml(l.materia || '')}"/>
@@ -5149,12 +5393,40 @@ function wireLezioneFormEvents(anno) {
       if (slot) { classeEl.value = slot.classe || ''; materiaEl.value = slot.materia || ''; }
     }
     refreshScadenzaOptions();
+    refreshMateriaOptionsForClasse();
+    refreshClasseOptionsForMateria();
+  }
+
+  // Filtro incrociato classe↔materia: selezionare l'una restringe i
+  // suggerimenti dell'altra a quelle effettivamente abbinate (da "Materie
+  // insegnate" della classe, la stessa fonte di DB.materieOf usata in
+  // Modifica classe) — resta comunque testo libero (datalist, non select),
+  // quindi se i dati non sono tracciati per quella classe/materia si
+  // ripiega sull'elenco completo invece di restare vuoto
+  function refreshMateriaOptionsForClasse() {
+    const effAnno = annoFromData(dataEl.value) || anno;
+    const classeVal = classeEl.value.trim();
+    const materieDiClasse = classeVal ? DB.materieOf(effAnno, classeVal) : [];
+    const materieOpts = materieDiClasse.length ? materieDiClasse : materieNamesLezioni();
+    document.getElementById('lz-materie-list').innerHTML = materieOpts.map(m => `<option value="${escHtml(m)}">`).join('');
+  }
+  function refreshClasseOptionsForMateria() {
+    const effAnno = annoFromData(dataEl.value) || anno;
+    const materiaVal = materiaEl.value.trim();
+    const classiAnno = allClasses(state.students, effAnno, 'all');
+    const classiConMateria = materiaVal ? classiAnno.filter(c => (DB.materieOf(effAnno, c) || []).includes(materiaVal)) : [];
+    const classiOpts = classiConMateria.length ? classiConMateria : classiAnno;
+    document.getElementById('lz-classi-list').innerHTML = classiOpts.map(c => `<option value="${escHtml(c)}">`).join('');
   }
 
   oraEl.addEventListener('change', autofillFromOrario);
   dataEl.addEventListener('change', autofillFromOrario);
   classeEl.addEventListener('change', refreshScadenzaOptions);
   classeEl.addEventListener('input', refreshScadenzaOptions);
+  classeEl.addEventListener('input', refreshMateriaOptionsForClasse);
+  materiaEl.addEventListener('input', refreshClasseOptionsForMateria);
+  refreshMateriaOptionsForClasse();
+  refreshClasseOptionsForMateria();
 }
 
 function openLezione(anno, id) {
@@ -5364,7 +5636,7 @@ function renderCompiti() {
   empty.classList.add('hidden');
 
   const oggi = todayISO();
-  const classiList = allClasses(state.students, 'all', 'all');
+  const classiList = allClasses(state.students, state.year, 'all');
   const materieList = materieNamesLezioni();
   syncRaggruppaBtn('compiti');
   const compitoRowHtml = ({ anno, l }) => {
@@ -7067,7 +7339,7 @@ function openForm(mode, ctx) {
     const defAnno = sYears[sYears.length - 1] || DB.currentAnno();
     const defClasse = edit ? (s.anni?.[defAnno]?.classe || '') : '';
     const yearOpts = [...new Set([...allYears(), DB.currentAnno()])].sort();
-    const classes = allClasses(state.students, 'all', 'all');
+    const classes = allClasses(state.students, defAnno, 'all');
     body.innerHTML = `
       <div class="vf-row">
         <label class="vf-label">Nome<input class="vf-input" id="f-nome" value="${escHtml(v.nome)}"/></label>
@@ -7096,13 +7368,17 @@ function openForm(mode, ctx) {
       </label>
       <label class="vf-label">Note<textarea class="vf-input" id="f-note">${escHtml(v.note || '')}</textarea></label>`;
 
-    // In modifica: cambiando anno, precompila la classe già registrata per quell'anno
-    if (edit) {
-      document.getElementById('f-anno-s').addEventListener('input', e => {
-        const c = s.anni?.[e.target.value.trim()]?.classe;
+    // Cambiando l'anno, i suggerimenti di classe si restringono a quell'A.S.
+    // (in modifica, precompila anche la classe già registrata per quell'anno)
+    document.getElementById('f-anno-s').addEventListener('input', e => {
+      const annoVal = e.target.value.trim();
+      document.getElementById('classi-list').innerHTML =
+        allClasses(state.students, annoVal || 'all', 'all').map(c => `<option value="${escHtml(c)}">`).join('');
+      if (edit) {
+        const c = s.anni?.[annoVal]?.classe;
         if (c !== undefined) document.getElementById('f-classe').value = c;
-      });
-    }
+      }
+    });
 
     // Tipologie dipendenti dal profilo (checkbox multiple, codici PROFILO_TIPI)
     const selP = document.getElementById('f-profilo');

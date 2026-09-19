@@ -93,6 +93,7 @@ const DB = (() => {
   let _rubriche = [];   // [ {id, nome, indicatori: [...]}, … ] — libreria griglie di valutazione
   let _colloqui = {};   // anno → [ {id, data, ora, studenteId, partecipanti, note}, … ] — colloqui genitori
   let _appuntamenti = {}; // anno → [ {id, tipo, data, ora, oraFine, modalita, classe, oggetto, note}, … ] — collegi/consigli/incontri
+  let _uscite = {};      // anno → [ {id, titolo, data, oraInizio, oraFine, classe}, … ] — uscite didattiche
   let _todos = [];      // [ {id, titolo, descrizione, stato, scadenza}, … ] — to-do, globale (non per anno)
   // Materiale: la libreria base (MATERIALE_LIST, in materiale-data.js) è
   // statica, importata una tantum dall'indice del Drive. Le modifiche
@@ -121,6 +122,8 @@ const DB = (() => {
   function colAnnoFromDocId(id) { return id.slice(5).replace(/_/g, '/'); }
   function apptDocId(anno) { return 'appt-' + String(anno).replace(/\//g, '_'); }
   function apptAnnoFromDocId(id) { return id.slice(5).replace(/_/g, '/'); }
+  function uscDocId(anno) { return 'usc-' + String(anno).replace(/\//g, '_'); }
+  function uscAnnoFromDocId(id) { return id.slice(4).replace(/_/g, '/'); }
 
   // Anno scolastico corrente: settembre–agosto (es. a luglio 2026 → "2025/26")
   function currentAnno() {
@@ -174,13 +177,14 @@ const DB = (() => {
       _rubriche = p.rubriche || [];
       _colloqui = p.colloqui || {};
       _appuntamenti = p.appuntamenti || {};
+      _uscite = p.uscite || {};
       _todos = p.todos || [];
       _materialeUser = p.materialeUser || { added: [], edited: {}, deleted: [] };
       return true;
     } catch { return false; }
   }
   function _cacheSave() {
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, coordinamento: _coordinamento, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos, materialeUser: _materialeUser })); } catch {}
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, coordinamento: _coordinamento, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos, materialeUser: _materialeUser })); } catch {}
   }
   function _cacheDrop() {
     try { sessionStorage.removeItem(CACHE_KEY); } catch {}
@@ -330,6 +334,11 @@ const DB = (() => {
     _appuntamenti = {};
     snap.docs.filter(d => d.id.startsWith('appt-')).forEach(d => {
       _appuntamenti[apptAnnoFromDocId(d.id)] = JSON.parse(d.data().json);
+    });
+
+    _uscite = {};
+    snap.docs.filter(d => d.id.startsWith('usc-')).forEach(d => {
+      _uscite[uscAnnoFromDocId(d.id)] = JSON.parse(d.data().json);
     });
 
     const todosDoc = snap.docs.find(d => d.id === 'todos');
@@ -665,6 +674,48 @@ const DB = (() => {
     _cacheDrop();
   }
 
+  // ── Uscite didattiche (per anno) ────────────────────────────────────
+  function getUscite(anno) { return _uscite[anno] || []; }
+  function getUsciteAnni() { return Object.keys(_uscite); }
+  async function _saveUscite(anno) {
+    const arr = _uscite[anno] || [];
+    const ref = packs().doc(uscDocId(anno));
+    if (!arr.length) { await ref.delete(); return; }
+    await ref.set({ json: JSON.stringify(arr) });
+  }
+  function _newUscita(u) {
+    return {
+      id: uid(), titolo: u.titolo || '', data: u.data || '',
+      oraInizio: u.oraInizio || '', oraFine: u.oraFine || '', luogo: u.luogo || '', note: u.note || '',
+      // Array (una o più classi contemporaneamente); retrocompatibile con il
+      // vecchio campo singolo "classe" dei record creati prima di questo cambio
+      classi: Array.isArray(u.classi) ? u.classi : (u.classe ? [u.classe] : []),
+    };
+  }
+  async function addUscita(anno, u) {
+    if (!_cache) await all();
+    const rec = _newUscita(u);
+    (_uscite[anno] ||= []).push(rec);
+    await _saveUscite(anno);
+    _cacheDrop();
+    return rec;
+  }
+  async function updateUscita(anno, id, attrs) {
+    if (!_cache) await all();
+    const arr = _uscite[anno] || [];
+    const idx = arr.findIndex(u => u.id === id);
+    if (idx < 0) return;
+    Object.assign(arr[idx], attrs);
+    await _saveUscite(anno);
+    _cacheDrop();
+  }
+  async function removeUscita(anno, id) {
+    if (!_cache) await all();
+    _uscite[anno] = (_uscite[anno] || []).filter(u => u.id !== id);
+    await _saveUscite(anno);
+    _cacheDrop();
+  }
+
   async function get(id) {
     if (!_cache) await all();
     return _cache.find(s => s.id === id) || null;
@@ -860,7 +911,7 @@ const DB = (() => {
     const data = await all();
     return JSON.stringify({
       app: APP, exportedAt: new Date().toISOString(),
-      students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, todos: _todos,
+      students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos,
       materialeUser: _materialeUser, coordinamento: _coordinamento,
     }, null, 2);
   }
@@ -905,6 +956,12 @@ const DB = (() => {
         await _saveAppuntamenti(anno);
       }
     }
+    if (!Array.isArray(parsed) && parsed.uscite) {
+      for (const [anno, arr] of Object.entries(parsed.uscite)) {
+        _uscite[anno] = arr;
+        await _saveUscite(anno);
+      }
+    }
     if (!Array.isArray(parsed) && parsed.todos) {
       _todos = parsed.todos;
       await packs().doc('todos').set({ json: JSON.stringify(_todos) });
@@ -934,6 +991,7 @@ const DB = (() => {
     getRubriche, saveRubriche,
     getColloqui, getColloquiAnni, addColloquio, updateColloquio, removeColloquio, addColloquiBulk,
     getAppuntamenti, getAppuntamentiAnni, addAppuntamento, updateAppuntamento, removeAppuntamento,
+    getUscite, getUsciteAnni, addUscita, updateUscita, removeUscita,
     getTodos, saveTodos,
     getMaterialeUser, saveMaterialeUser,
     exportJSON, importJSON,
