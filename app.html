@@ -1387,13 +1387,25 @@
     <label class="vf-label">Profilo
       <select class="vf-input" id="bes-profilo"></select>
     </label>
-    <label class="vf-label" id="bes-ptipo-wrap">Classificazione (selezionabile più di una)
-      <div class="mc-list" id="bes-ptipi-list"></div>
+    <label class="vf-label" id="bes-ptipo-wrap">Classificazione
+      <div id="bes-ptipi-wrap"></div>
     </label>
-    <label class="vf-label">Strumenti compensativi<textarea class="vf-input" id="bes-compensativi" rows="2"></textarea></label>
-    <label class="vf-label">Strumenti dispensativi<textarea class="vf-input" id="bes-dispensativi" rows="2"></textarea></label>
-    <label class="vf-label">Strumenti valutativi<textarea class="vf-input" id="bes-valutativi" rows="2"></textarea></label>
-    <label class="vf-label">Obiettivi<textarea class="vf-input" id="bes-obiettivi" rows="2"></textarea></label>
+    <label class="vf-label hidden" id="bes-pei-prog-wrap">Tipo di programmazione
+      <select class="vf-input" id="bes-pei-prog"></select>
+    </label>
+    <label class="vf-label">Diagnosi
+      <input class="vf-input" id="bes-diagnosi" list="bes-diagnosi-list" placeholder="es. F81.0 — Dislessia evolutiva"/>
+      <datalist id="bes-diagnosi-list"></datalist>
+    </label>
+    <div class="vf-row">
+      <label class="vf-label">Redattore<input class="vf-input" id="bes-redattore" placeholder="es. Dott.ssa Rossi, Neuropsichiatra infantile"/></label>
+      <label class="vf-label">Istituzione d'origine<input class="vf-input" id="bes-istituzione" placeholder="es. ASL Roma 1"/></label>
+    </div>
+    <div class="vf-row">
+      <label class="vf-label">Data redazione certificazione<input type="date" class="vf-input" id="bes-data-redazione"/></label>
+      <label class="vf-label">Data aggiornamento certificazione<input type="date" class="vf-input" id="bes-data-aggiornamento"/></label>
+    </div>
+    <label class="vf-label">Note<textarea class="vf-input" id="bes-note" rows="3"></textarea></label>
     <div class="form-foot">
       <button class="btn-ghost" id="bes-cancel" type="button">Annulla</button>
       <button class="btn-primary" id="bes-save" type="button">Salva piano</button>

@@ -954,6 +954,33 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
 .mc-chk:last-child { border-bottom: none; }
 .mc-chk input { width: 15px; height: 15px; accent-color: var(--accent-blue); cursor: pointer; }
 
+/* ── Selettore multiplo "a tendina" (Tipologie PDP/PEI) ───────────────── */
+.ms-dropdown { position: relative; }
+.ms-dropdown-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  cursor: pointer; text-align: left;
+}
+.ms-dropdown-toggle .chevron { flex-shrink: 0; color: var(--text-hint); transition: transform var(--transition); }
+.ms-dropdown.open .ms-dropdown-toggle .chevron { transform: rotate(180deg); }
+.ms-dropdown-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* In-flow (non "position:absolute"), volutamente: una tendina flottante
+   sopra il resto del form potrebbe coprire campi/pulsanti sottostanti
+   (es. "Salva") finché non viene chiusa — qui invece spinge giù il resto
+   del form, stesso principio delle righe espandibili di Coordinamento */
+.ms-dropdown-panel {
+  display: none; margin-top: 6px;
+  background: var(--bg2); border: 1px solid var(--border-idle); border-radius: 8px;
+  padding: 4px;
+}
+.ms-dropdown.open .ms-dropdown-panel { display: block; }
+.ms-dropdown-panel .mc-list { max-height: 240px; padding-right: 4px; }
+.ms-group-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-hint); padding: 8px 6px 3px;
+}
+.ms-dropdown-panel .mc-chk { padding: 6px; border-radius: 5px; border-bottom: none; }
+.ms-dropdown-panel .mc-chk:hover { background: var(--bg3); }
+
 /* ── Valutazione verifica: righe esercizio + celle punteggio in griglia ── */
 /* Il testo/campi del panel unico risultavano attaccati (nessuno spazio
    verticale fra una vf-row e la successiva): qui, e solo qui, il panel
@@ -1183,6 +1210,11 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
   background: rgba(255,59,59,0.10);
   border: 1px solid rgba(255,59,59,0.35);
 }
+/* Pill PDP/PEI cliccabile → apre il piano BES di quell'alunno (Scheda
+   alunno ed elenco Alunni; non nella tabella di inserimento voti, dove un
+   clic accidentale interromperebbe la compilazione) */
+.pb-clickable { cursor: pointer; transition: opacity var(--transition); }
+.pb-clickable:hover { opacity: 0.75; }
 .modal-meta .profilo-badge { margin-left: 0; align-self: center; }
 
 /* ── Istruzioni modal import CSV ───────────────────────────────── */
@@ -1588,6 +1620,9 @@ textarea.vf-input { resize: vertical; min-height: 64px; }
   margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-idle);
 }
 .bes-field-label { display: block; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-hint); margin-bottom: 4px; }
+/* Le note sono testo libero, spesso più lungo dei campi accanto: occupano
+   l'intera larghezza della card invece di restare compresse in una colonna */
+.bes-field-full { grid-column: 1 / -1; }
 .bes-field p { font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; margin: 0; white-space: pre-wrap; }
 @media (max-width: 720px) { .bes-grid { grid-template-columns: 1fr; } }
 

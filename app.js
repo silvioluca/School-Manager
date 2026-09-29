@@ -86,7 +86,14 @@ const TODO_STATI = [
 // non un codice ministeriale unico — le classificazioni SIDI variano da scuola a scuola).
 // Uno studente può avere più tipologie contemporaneamente (comorbidità comuni,
 // es. dislessia + discalculia): profiloTipo è quindi un array di codici.
-const PROFILI = { ND: 'Normodotazione', PDP: 'PDP', PEI: 'PEI' };
+const PROFILI = { ND: 'Neurotipico', PDP: 'PDP', PEI: 'PEI' };
+// Tipo di programmazione PEI (O.M. 90/2001): curricolare con obiettivi minimi,
+// semplificata o differenziata — rilevante solo se profilo === 'PEI'
+const PEI_PROGRAMMAZIONE = {
+  A: 'A — Curricolare (obiettivi minimi)',
+  B: 'B — Semplificata',
+  C: 'C — Differenziata',
+};
 const PROFILO_TIPI = {
   PEI: [
     { c: 'INT', l: 'Disabilità intellettiva' },
@@ -97,16 +104,83 @@ const PROFILO_TIPI = {
     { c: 'PLU', l: 'Disabilità plurima' },
     { c: 'ALT', l: 'Altra disabilità certificata (L.104/92)' },
   ],
+  // Codici ICD-10 (categorie F e R) rilevanti in ambito scolastico — elenco
+  // ampliato, raggruppato per area clinica (il gruppo "g" guida solo la
+  // visualizzazione a sezioni nel selettore, non incide sul salvataggio)
   PDP: [
-    { c: 'F81.0', l: 'F81.0 — Dislessia' },
-    { c: 'F81.1', l: 'F81.1 — Disortografia' },
-    { c: 'F81.2', l: 'F81.2 — Discalculia' },
-    { c: 'F81.3', l: 'F81.3 — Disturbo misto delle abilità scolastiche' },
-    { c: 'F81.8', l: 'F81.8 — Disgrafia / altri disturbi evolutivi' },
-    { c: 'F80',   l: 'F80 — Disturbo del linguaggio' },
-    { c: 'F90',   l: 'F90 — ADHD (Deficit di Attenzione/Iperattività)' },
-    { c: 'FIL',   l: 'FIL — Funzionamento Intellettivo Limite' },
-    { c: 'BES',   l: 'BES — Svantaggio socio-economico/linguistico/culturale' },
+    { c: 'F81.0', l: 'F81.0 — Dislessia evolutiva', g: 'DSA' },
+    { c: 'F81.1', l: 'F81.1 — Disortografia', g: 'DSA' },
+    { c: 'F81.2', l: 'F81.2 — Discalculia evolutiva', g: 'DSA' },
+    { c: 'F81.3', l: 'F81.3 — Disturbo misto delle abilità scolastiche', g: 'DSA' },
+    { c: 'F81.8', l: 'F81.8 — Disgrafia / altri disturbi evolutivi', g: 'DSA' },
+    { c: 'F81.9', l: 'F81.9 — Disturbo evolutivo delle abilità scolastiche non specificato', g: 'DSA' },
+    { c: 'F80.0', l: "F80.0 — Disturbo specifico dell'articolazione della parola", g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F80.1', l: 'F80.1 — Disturbo del linguaggio espressivo', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F80.2', l: 'F80.2 — Disturbo del linguaggio ricettivo-espressivo', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F80.3', l: 'F80.3 — Afasia acquisita con epilessia (Landau-Kleffner)', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F80.8', l: 'F80.8 — Altri disturbi dello sviluppo del linguaggio e della parola', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F80.9', l: 'F80.9 — Disturbo dello sviluppo del linguaggio e della parola non specificato', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F82',   l: 'F82 — Disprassia / disturbo evolutivo della coordinazione (DCD)', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F83',   l: 'F83 — Disturbi evolutivi specifici misti', g: 'Linguaggio e coordinazione motoria' },
+    { c: 'F84.0', l: 'F84.0 — Autismo infantile', g: 'Spettro autistico' },
+    { c: 'F84.1', l: 'F84.1 — Autismo atipico', g: 'Spettro autistico' },
+    { c: 'F84.2', l: 'F84.2 — Sindrome di Rett', g: 'Spettro autistico' },
+    { c: 'F84.3', l: "F84.3 — Altro disturbo disintegrativo dell'infanzia", g: 'Spettro autistico' },
+    { c: 'F84.4', l: 'F84.4 — Disturbo iperattivo con ritardo mentale e stereotipie', g: 'Spettro autistico' },
+    { c: 'F84.5', l: 'F84.5 — Sindrome di Asperger', g: 'Spettro autistico' },
+    { c: 'F84.8', l: 'F84.8 — Altri disturbi pervasivi dello sviluppo', g: 'Spettro autistico' },
+    { c: 'F84.9', l: 'F84.9 — Disturbo pervasivo dello sviluppo non specificato', g: 'Spettro autistico' },
+    { c: 'F90.0', l: 'F90.0 — ADHD (tipo combinato o inattentivo)', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F90.1', l: 'F90.1 — Disturbo ipercinetico della condotta', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F90.8', l: 'F90.8 — Altri disturbi ipercinetici', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F90.9', l: 'F90.9 — Disturbo ipercinetico non specificato', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.0', l: 'F91.0 — Disturbo della condotta limitato al contesto familiare', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.1', l: 'F91.1 — Disturbo della condotta con ridotta socializzazione', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.2', l: 'F91.2 — Disturbo della condotta con socializzazione normale', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.3', l: 'F91.3 — Disturbo oppositivo provocatorio (DOP)', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.8', l: 'F91.8 — Altri disturbi della condotta', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F91.9', l: 'F91.9 — Disturbo della condotta non specificato', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F92.0', l: 'F92.0 — Disturbo misto della condotta e della sfera emozionale', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F93.0', l: "F93.0 — Disturbo d'ansia da separazione dell'infanzia", g: 'ADHD, condotta ed emozionali' },
+    { c: 'F93.1', l: "F93.1 — Disturbo d'ansia fobica dell'infanzia", g: 'ADHD, condotta ed emozionali' },
+    { c: 'F93.2', l: "F93.2 — Disturbo di ansia sociale dell'infanzia", g: 'ADHD, condotta ed emozionali' },
+    { c: 'F93.3', l: 'F93.3 — Disturbo da rivalità tra fratelli', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F94.0', l: 'F94.0 — Mutismo selettivo', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F94.1', l: "F94.1 — Disturbo reattivo dell'attaccamento dell'infanzia", g: 'ADHD, condotta ed emozionali' },
+    { c: 'F94.2', l: "F94.2 — Disturbo disinibito dell'attaccamento dell'infanzia", g: 'ADHD, condotta ed emozionali' },
+    { c: 'F98.4', l: 'F98.4 — Disturbo da movimenti stereotipati', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F98.5', l: 'F98.5 — Balbuzie', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F98.8', l: 'F98.8 — Altri disturbi comportamentali/emozionali con esordio nell\'infanzia', g: 'ADHD, condotta ed emozionali' },
+    { c: 'F70.0', l: 'F70.0 — Disabilità intellettiva lieve (compromissione minima)', g: 'Disabilità intellettiva' },
+    { c: 'F70.1', l: 'F70.1 — Disabilità intellettiva lieve (compromissione significativa)', g: 'Disabilità intellettiva' },
+    { c: 'F71.0', l: 'F71.0 — Disabilità intellettiva moderata', g: 'Disabilità intellettiva' },
+    { c: 'F72.0', l: 'F72.0 — Disabilità intellettiva grave', g: 'Disabilità intellettiva' },
+    { c: 'F73.0', l: 'F73.0 — Disabilità intellettiva profonda', g: 'Disabilità intellettiva' },
+    { c: 'F78',   l: 'F78 — Altra disabilità intellettiva', g: 'Disabilità intellettiva' },
+    { c: 'F79',   l: 'F79 — Disabilità intellettiva non specificata', g: 'Disabilità intellettiva' },
+    { c: 'F32.0', l: 'F32.0 — Episodio depressivo lieve', g: "Umore e d'ansia" },
+    { c: 'F32.1', l: 'F32.1 — Episodio depressivo moderato', g: "Umore e d'ansia" },
+    { c: 'F40.0', l: 'F40.0 — Agorafobia', g: "Umore e d'ansia" },
+    { c: 'F40.1', l: 'F40.1 — Fobia sociale', g: "Umore e d'ansia" },
+    { c: 'F41.0', l: 'F41.0 — Disturbo da panico', g: "Umore e d'ansia" },
+    { c: 'F41.1', l: "F41.1 — Disturbo d'ansia generalizzato", g: "Umore e d'ansia" },
+    { c: 'F42.0', l: 'F42.0 — Disturbo ossessivo-compulsivo', g: "Umore e d'ansia" },
+    { c: 'F43.1', l: 'F43.1 — Disturbo da stress post-traumatico (PTSD)', g: "Umore e d'ansia" },
+    { c: 'R48.0', l: 'R48.0 — Dislessia ed alessia (sintomo)', g: 'Disfunzioni simboliche e cognitive' },
+    { c: 'R48.1', l: 'R48.1 — Agnosia', g: 'Disfunzioni simboliche e cognitive' },
+    { c: 'R48.2', l: 'R48.2 — Aprassia / disprassia (sintomatologia)', g: 'Disfunzioni simboliche e cognitive' },
+    { c: 'R48.8', l: 'R48.8 — Altre disfunzioni simboliche (agrafia, acalculia)', g: 'Disfunzioni simboliche e cognitive' },
+    { c: 'R41.8', l: 'R41.8 — Deficit attentivi/di memoria (sintomo)', g: 'Disfunzioni simboliche e cognitive' },
+    { c: 'R47.0', l: 'R47.0 — Disfasia ed afasia', g: 'Parola e linguaggio' },
+    { c: 'R47.1', l: 'R47.1 — Disartria ed anartria', g: 'Parola e linguaggio' },
+    { c: 'R47.8', l: 'R47.8 — Altri disturbi della parola e del linguaggio', g: 'Parola e linguaggio' },
+    { c: 'R27.0', l: 'R27.0 — Atassia non specificata', g: 'Coordinazione motoria e sviluppo' },
+    { c: 'R27.8', l: 'R27.8 — Altri disturbi della coordinazione motoria', g: 'Coordinazione motoria e sviluppo' },
+    { c: 'R62.0', l: 'R62.0 — Ritardo psicomotorio generico', g: 'Coordinazione motoria e sviluppo' },
+    { c: 'R62.8', l: 'R62.8 — Altro ritardo dello sviluppo fisiologico', g: 'Coordinazione motoria e sviluppo' },
+    { c: 'FIL',   l: 'FIL — Funzionamento Intellettivo Limite', g: 'Altro (non ICD-10)' },
+    { c: 'BES',   l: 'BES — Svantaggio socio-economico/linguistico/culturale', g: 'Altro (non ICD-10)' },
+    { c: 'BES-salute',   l: 'BES — Gravi condizioni di salute / patologia cronica ' }
   ],
 };
 // I dati salvati prima di questa modifica avevano profiloTipo come stringa singola:
@@ -118,6 +192,54 @@ function profiloBadge(s) {
   const tipi = toTipiArray(s.profiloTipo);
   return tipi.length ? `${s.profilo} · ${tipi.join(', ')}` : s.profilo;
 }
+
+// ── Selettore multiplo "a tendina" (select-like con checkbox interne) ────
+// Usato per le Tipologie PDP/PEI (comorbidità: più selezioni contemporanee)
+// sia nella modale Alunno che nella modale BES — l'elenco PDP è ora lungo
+// (ICD-10 ampliato), quindi una lista di checkbox sempre visibile non è più
+// praticabile: qui resta collassata, con un riepilogo nel bottone-tendina.
+function msDropdownSummary(selected) {
+  if (!selected.length) return 'Nessuna';
+  return selected.length <= 2 ? selected.join(', ') : `${selected.length} selezionate`;
+}
+function msDropdownHtml(id, options, selected) {
+  const selSet = new Set(selected);
+  let lastGroup;
+  const itemsHtml = options.map(t => {
+    const groupHtml = t.g && t.g !== lastGroup ? (lastGroup = t.g, `<div class="ms-group-label">${escHtml(t.g)}</div>`) : '';
+    return `${groupHtml}<label class="mc-chk"><input type="checkbox" value="${escHtml(t.c)}" ${selSet.has(t.c) ? 'checked' : ''}/><span>${escHtml(t.l)}</span></label>`;
+  }).join('');
+  return `
+    <div class="ms-dropdown" id="${id}">
+      <button type="button" class="vf-input ms-dropdown-toggle">
+        <span class="ms-dropdown-summary">${escHtml(msDropdownSummary(selected))}</span>
+        <svg class="chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="ms-dropdown-panel"><div class="mc-list">${itemsHtml || '<p class="stat-sub" style="padding:6px 8px">Nessuna opzione.</p>'}</div></div>
+    </div>`;
+}
+function msDropdownSelected(id) {
+  return [...document.querySelectorAll(`#${CSS.escape(id)} input[type=checkbox]:checked`)].map(i => i.value);
+}
+function wireMsDropdown(id, onChange) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  root.querySelector('.ms-dropdown-toggle').addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.ms-dropdown.open').forEach(d => { if (d !== root) d.classList.remove('open'); });
+    root.classList.toggle('open');
+  });
+  root.querySelectorAll('input[type=checkbox]').forEach(cb => cb.addEventListener('change', () => {
+    const selected = msDropdownSelected(id);
+    root.querySelector('.ms-dropdown-summary').textContent = msDropdownSummary(selected);
+    onChange?.(selected);
+  }));
+}
+// Un solo listener globale (non uno per tendina aperta): chiude qualunque
+// ms-dropdown aperta quando si clicca fuori
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-dropdown')) document.querySelectorAll('.ms-dropdown.open').forEach(d => d.classList.remove('open'));
+});
 
 // ── Indirizzi di studio ministeriali (riordino 2010) ─────────────────
 // Selezionabili a tendina nella scheda classe; l'istituto (nome scuola) resta
@@ -1201,7 +1323,7 @@ function renderAlunni() {
             </div>
           </td>
           <td class="col-hide-m">${escHtml(r.classe || '—')}</td>
-          <td class="col-hide-m">${badge ? `<span class="profilo-badge pb-${r.s.profilo.toLowerCase()}">${escHtml(badge)}</span>` : '<span class="stat-sub">—</span>'}</td>
+          <td class="col-hide-m">${badge ? `<span class="profilo-badge pb-${r.s.profilo.toLowerCase()} pb-clickable" data-bes-id="${r.s.id}">${escHtml(badge)}</span>` : '<span class="stat-sub">—</span>'}</td>
           <td class="vt-mono vt-voto ${gradeClass(r.media)}">${fmt(r.media)}</td>
           <td class="col-hide-m">${r.nVoti}</td>
           <td class="col-hide-m">${r.nAnni}</td>
@@ -1235,6 +1357,8 @@ function renderAlunni() {
   // Click sul nome → apre la scheda; click altrove nella riga → seleziona
   // (in mobile, dove le colonne extra sono nascoste, espande la riga invece)
   activeContainer.querySelectorAll('.al-row').forEach(row => row.addEventListener('click', e => {
+    const besBadge = e.target.closest('[data-bes-id]');
+    if (besBadge) { goToBes(state.students.find(x => x.id === besBadge.dataset.besId)); return; }
     if (e.target.closest('.al-name-cell')) { openStudent(row.dataset.id); return; }
     if (isMobileWidth()) { toggleRowExpand(row); return; }
     const id = row.dataset.id;
@@ -1962,7 +2086,6 @@ let promoTargets = null; // [{anno, classe, nextAnno, nextClasse}] in attesa di 
 function closePromo() { promoOverlay.classList.add('hidden'); promoTargets = null; }
 document.getElementById('promo-close').addEventListener('click', closePromo);
 document.getElementById('promo-cancel').addEventListener('click', closePromo);
-promoOverlay.addEventListener('click', e => { if (e.target === promoOverlay) closePromo(); });
 
 // Promozione di una singola classe: mostra l'elenco alunni con checkbox "non promosso"
 function openPromoSingola(anno, classe) {
@@ -3255,7 +3378,6 @@ function closeRubricaModal() {
 document.getElementById('btn-add-rubrica').addEventListener('click', () => openRubricaModal(null));
 document.getElementById('rubrica-close').addEventListener('click', closeRubricaModal);
 document.getElementById('rubrica-cancel').addEventListener('click', closeRubricaModal);
-document.getElementById('rubrica-overlay').addEventListener('click', e => { if (e.target.id === 'rubrica-overlay') closeRubricaModal(); });
 
 function renderIndicatoreBlock(ind, i) {
   return `
@@ -3437,10 +3559,12 @@ function besCardHtml(s) {
         <button class="btn-ghost" data-edit-bes="${s.id}">Modifica piano</button>
       </div>
       <div class="bes-grid">
-        <div class="bes-field"><span class="bes-field-label">Strumenti compensativi</span><p>${besFieldPreview(piano.compensativi)}</p></div>
-        <div class="bes-field"><span class="bes-field-label">Strumenti dispensativi</span><p>${besFieldPreview(piano.dispensativi)}</p></div>
-        <div class="bes-field"><span class="bes-field-label">Strumenti valutativi</span><p>${besFieldPreview(piano.valutativi)}</p></div>
-        <div class="bes-field"><span class="bes-field-label">Obiettivi</span><p>${besFieldPreview(piano.obiettivi)}</p></div>
+        <div class="bes-field"><span class="bes-field-label">Diagnosi</span><p>${besFieldPreview(piano.diagnosi)}</p></div>
+        <div class="bes-field"><span class="bes-field-label">Redattore</span><p>${besFieldPreview(piano.redattore)}</p></div>
+        <div class="bes-field"><span class="bes-field-label">Istituzione d'origine</span><p>${besFieldPreview(piano.istituzione)}</p></div>
+        <div class="bes-field"><span class="bes-field-label">Data redazione certificazione</span><p>${besFieldPreview(piano.dataRedazione && fmtData(piano.dataRedazione))}</p></div>
+        <div class="bes-field"><span class="bes-field-label">Data aggiornamento certificazione</span><p>${besFieldPreview(piano.dataAggiornamento && fmtData(piano.dataAggiornamento))}</p></div>
+        <div class="bes-field bes-field-full"><span class="bes-field-label">Note</span><p>${besFieldPreview(piano.note)}</p></div>
       </div>
     </div>`;
 }
@@ -3520,6 +3644,7 @@ document.getElementById('btn-bes-rimuovi-bulk').addEventListener('click', async 
       if (!s) continue;
       s.profilo = 'ND';
       s.profiloTipo = [];
+      s.peiProgrammazione = '';
       await DB.put(s);
     }
     state.besSelected.clear();
@@ -3543,22 +3668,29 @@ function renderBes() {
   renderBesElenco(list);
 }
 
+// Clic sulla pill PDP/PEI (Scheda alunno, Elenco alunni) → apre il piano
+// BES di quell'alunno, indipendentemente dai filtri Anno/Istituto/Classe
+// attivi (besStudents() li applicherebbe, ma qui apriamo il modale
+// direttamente sullo studente, non passando dalla lista filtrata)
+function goToBes(s) {
+  if (!s || s.profilo === 'ND') return;
+  setView('bes');
+  openBesModal(s);
+}
+
 let besEditingId = null;
-// Checkbox tipologie dipendenti dal profilo scelto (stesso pattern del form
-// Alunno): i codici sono specifici di PDP/PEI, non condivisi fra i due
+// Tendina multi-selezione tipologie dipendente dal profilo scelto (stesso
+// pattern del form Alunno): i codici sono specifici di PDP/PEI, non
+// condivisi fra i due — più "Tipo di programmazione", visibile solo per PEI
 function besSyncTipo(selectedTipi) {
   const selP = document.getElementById('bes-profilo');
   const wrapT = document.getElementById('bes-ptipo-wrap');
-  const listT = document.getElementById('bes-ptipi-list');
+  const ptipiWrap = document.getElementById('bes-ptipi-wrap');
   const tipi = PROFILO_TIPI[selP.value];
   wrapT.classList.toggle('hidden', !tipi);
-  listT.innerHTML = tipi
-    ? tipi.map(t => `
-      <label class="mc-chk">
-        <input type="checkbox" value="${t.c}" ${selectedTipi.includes(t.c) ? 'checked' : ''}/>
-        <span>${escHtml(t.l)}</span>
-      </label>`).join('')
-    : '';
+  document.getElementById('bes-pei-prog-wrap').classList.toggle('hidden', selP.value !== 'PEI');
+  ptipiWrap.innerHTML = tipi ? msDropdownHtml('bes-ptipi', tipi, selectedTipi) : '';
+  if (tipi) wireMsDropdown('bes-ptipi');
 }
 function openBesModal(s) {
   if (!s) return;
@@ -3567,29 +3699,36 @@ function openBesModal(s) {
   document.getElementById('bes-title').textContent = `Piano BES — ${s.cognome} ${s.nome}`;
   const selP = document.getElementById('bes-profilo');
   selP.innerHTML = Object.entries(PROFILI).map(([c, l]) => `<option value="${c}" ${(s.profilo || 'ND') === c ? 'selected' : ''}>${l}</option>`).join('');
+  const selPeiProg = document.getElementById('bes-pei-prog');
+  selPeiProg.innerHTML = Object.entries(PEI_PROGRAMMAZIONE).map(([c, l]) => `<option value="${c}" ${s.peiProgrammazione === c ? 'selected' : ''}>${escHtml(l)}</option>`).join('');
   besSyncTipo(toTipiArray(s.profiloTipo));
   selP.onchange = () => besSyncTipo([]); // profilo cambiato: i codici del profilo precedente non hanno senso, si riparte da zero
-  document.getElementById('bes-compensativi').value = piano.compensativi || '';
-  document.getElementById('bes-dispensativi').value = piano.dispensativi || '';
-  document.getElementById('bes-valutativi').value = piano.valutativi || '';
-  document.getElementById('bes-obiettivi').value = piano.obiettivi || '';
+  document.getElementById('bes-diagnosi-list').innerHTML = PROFILO_TIPI.PDP.map(t => `<option value="${escHtml(t.l)}">`).join('');
+  document.getElementById('bes-diagnosi').value = piano.diagnosi || '';
+  document.getElementById('bes-redattore').value = piano.redattore || '';
+  document.getElementById('bes-istituzione').value = piano.istituzione || '';
+  document.getElementById('bes-data-redazione').value = piano.dataRedazione || '';
+  document.getElementById('bes-data-aggiornamento').value = piano.dataAggiornamento || '';
+  document.getElementById('bes-note').value = piano.note || '';
   document.getElementById('bes-overlay').classList.remove('hidden');
 }
 function closeBesModal() { document.getElementById('bes-overlay').classList.add('hidden'); besEditingId = null; }
 document.getElementById('bes-close').addEventListener('click', closeBesModal);
 document.getElementById('bes-cancel').addEventListener('click', closeBesModal);
-document.getElementById('bes-overlay').addEventListener('click', e => { if (e.target.id === 'bes-overlay') closeBesModal(); });
 document.getElementById('bes-save').addEventListener('click', async () => {
   const s = state.students.find(x => x.id === besEditingId);
   if (!s) return;
   const profilo = document.getElementById('bes-profilo').value || 'ND';
   s.profilo = profilo;
-  s.profiloTipo = profilo === 'ND' ? [] : [...document.querySelectorAll('#bes-ptipi-list input:checked')].map(i => i.value);
+  s.profiloTipo = profilo === 'ND' ? [] : msDropdownSelected('bes-ptipi');
+  s.peiProgrammazione = profilo === 'PEI' ? document.getElementById('bes-pei-prog').value : '';
   s.besPiano = {
-    compensativi: document.getElementById('bes-compensativi').value.trim(),
-    dispensativi: document.getElementById('bes-dispensativi').value.trim(),
-    valutativi: document.getElementById('bes-valutativi').value.trim(),
-    obiettivi: document.getElementById('bes-obiettivi').value.trim(),
+    diagnosi: document.getElementById('bes-diagnosi').value.trim(),
+    redattore: document.getElementById('bes-redattore').value.trim(),
+    istituzione: document.getElementById('bes-istituzione').value.trim(),
+    dataRedazione: document.getElementById('bes-data-redazione').value,
+    dataAggiornamento: document.getElementById('bes-data-aggiornamento').value,
+    note: document.getElementById('bes-note').value.trim(),
   };
   try {
     await DB.put(s);
@@ -4135,7 +4274,6 @@ document.getElementById('btn-add-colloquio').addEventListener('click', () => {
 function closeColloquio() { document.getElementById('colloquio-overlay').classList.add('hidden'); colloquioCtx = null; }
 document.getElementById('colloquio-close').addEventListener('click', closeColloquio);
 document.getElementById('colloquio-cancel').addEventListener('click', closeColloquio);
-document.getElementById('colloquio-overlay').addEventListener('click', e => { if (e.target.id === 'colloquio-overlay') closeColloquio(); });
 // Sincronizza (in background, senza bloccare né condizionare il salvataggio
 // locale già avvenuto) un colloquio con Google Calendar: crea/aggiorna
 // l'evento gemello e, se cambia l'id, lo riporta sul record Firestore.
@@ -4351,7 +4489,6 @@ document.getElementById('btn-add-appuntamento').addEventListener('click', () => 
 function closeAppuntamento() { document.getElementById('appuntamento-overlay').classList.add('hidden'); appuntamentoCtx = null; }
 document.getElementById('appuntamento-close').addEventListener('click', closeAppuntamento);
 document.getElementById('appuntamento-cancel').addEventListener('click', closeAppuntamento);
-document.getElementById('appuntamento-overlay').addEventListener('click', e => { if (e.target.id === 'appuntamento-overlay') closeAppuntamento(); });
 // Sincronizza (in background, senza bloccare né condizionare il salvataggio
 // locale già avvenuto) un appuntamento con Google Calendar: crea/aggiorna
 // l'evento gemello e, se cambia l'id, lo riporta sul record Firestore.
@@ -4556,7 +4693,6 @@ document.getElementById('btn-add-uscita').addEventListener('click', () => {
 function closeUscita() { document.getElementById('uscita-overlay').classList.add('hidden'); uscitaCtx = null; }
 document.getElementById('uscita-close').addEventListener('click', closeUscita);
 document.getElementById('uscita-cancel').addEventListener('click', closeUscita);
-document.getElementById('uscita-overlay').addEventListener('click', e => { if (e.target.id === 'uscita-overlay') closeUscita(); });
 document.getElementById('uscita-save').addEventListener('click', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('us-data');
@@ -5299,22 +5435,17 @@ function fmtDateIt(iso) {
   const d = new Date(iso + 'T00:00:00');
   return `${DOW_LABELS[(d.getDay() + 6) % 7]} ${d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
 }
-// Prossime date (a partire dal giorno dopo `fromDateStr`) in cui quella classe
-// ha un'ora in orario, secondo la griglia ricorrente — per proporre la
-// scadenza dei compiti come "prossima lezione di quella classe" invece di
-// una data libera
+// Prossime date (a partire dal giorno dopo `fromDateStr`) in cui quella
+// classe ha già una lezione fissata nel calendario (non la proiezione della
+// griglia ricorrente di Orario, ma le Lezioni realmente inserite) — per
+// proporre la scadenza dei compiti come "prossima lezione di quella classe"
 function nextClasseDates(anno, classe, fromDateStr, count = 8) {
   if (!classe) return [];
-  const giorniConClasse = new Set(DB.getOrario(anno).slots.filter(s => s.classe === classe).map(s => s.giorno));
-  if (!giorniConClasse.size) return [];
-  const out = [];
-  let d = new Date((fromDateStr || todayISO()) + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  for (let guard = 0; out.length < count && guard < 60; guard++) {
-    if (giorniConClasse.has((d.getDay() + 6) % 7 + 1)) out.push(toISO(d));
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
+  const from = fromDateStr || todayISO();
+  const dates = [...new Set(
+    DB.getLezioni(anno).filter(l => l.classe === classe && l.data > from).map(l => l.data)
+  )].sort();
+  return dates.slice(0, count);
 }
 function scadenzaOptions(anno, classe, fromDate, existingScadenza) {
   const dates = nextClasseDates(anno, classe, fromDate);
@@ -5358,10 +5489,10 @@ function lezioneFormBody(l, anno) {
     <div class="vf-row">
       <label class="vf-label">Compiti<textarea class="vf-input" id="lz-compiti">${escHtml(l.compiti || '')}</textarea></label>
       <label class="vf-label">Scadenza compiti
-        <select class="vf-input" id="lz-scadenza">
-          <option value="">Nessuna</option>
-          ${scadOpts.map(iso => `<option value="${iso}" ${l.scadenza === iso ? 'selected' : ''}>${fmtDateIt(iso)}</option>`).join('')}
-        </select>
+        <input type="date" class="vf-input" id="lz-scadenza" value="${escHtml(l.scadenza || '')}"/>
+        <div class="vf-chip-picker" id="lz-scadenza-suggerite">${scadOpts.map(iso => `
+          <button type="button" class="vf-chip-toggle" data-date="${iso}">${escHtml(fmtDateIt(iso))}</button>`).join('')}
+        </div>
       </label>
     </div>
     <label class="vf-label">Note<textarea class="vf-input" id="lz-note">${escHtml(l.note || '')}</textarea></label>`;
@@ -5377,13 +5508,21 @@ function wireLezioneFormEvents(anno) {
   const materiaEl = document.getElementById('lz-materia');
   const scadEl = document.getElementById('lz-scadenza');
 
+  // Scadenza compiti: campo data libero (si può sempre scrivere/scegliere
+  // una data qualunque) più chip di scorciatoia sulle prossime lezioni già
+  // fissate in calendario per quella classe, cliccabili per compilarlo al volo
   function refreshScadenzaOptions() {
     const cur = scadEl.value;
     const effAnno = annoFromData(dataEl.value) || anno;
     const opts = scadenzaOptions(effAnno, classeEl.value.trim(), dataEl.value, cur);
-    scadEl.innerHTML = '<option value="">Nessuna</option>' +
-      opts.map(iso => `<option value="${iso}" ${cur === iso ? 'selected' : ''}>${fmtDateIt(iso)}</option>`).join('');
+    document.getElementById('lz-scadenza-suggerite').innerHTML = opts.map(iso => `
+      <button type="button" class="vf-chip-toggle ${cur === iso ? 'active' : ''}" data-date="${iso}">${escHtml(fmtDateIt(iso))}</button>`).join('');
+    document.querySelectorAll('#lz-scadenza-suggerite .vf-chip-toggle').forEach(btn => btn.addEventListener('click', () => {
+      scadEl.value = btn.dataset.date;
+      refreshScadenzaOptions();
+    }));
   }
+  scadEl.addEventListener('input', refreshScadenzaOptions);
   function autofillFromOrario() {
     const giorno = isoDayGiorno(dataEl.value);
     const ora = +oraEl.value;
@@ -5458,9 +5597,6 @@ function openLezioneNew(defaultData, defaultOra) {
 function closeLezione() { document.getElementById('lezione-overlay').classList.add('hidden'); lezioneCtx = null; }
 document.getElementById('lezione-close').addEventListener('click', closeLezione);
 document.getElementById('lezione-cancel').addEventListener('click', closeLezione);
-document.getElementById('lezione-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('lezione-overlay')) closeLezione();
-});
 document.getElementById('btn-add-lezione').addEventListener('click', () => openLezioneNew());
 document.getElementById('lezione-save').addEventListener('click', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
@@ -5535,7 +5671,6 @@ function closeLezCsv() { lezCsvOverlay.classList.add('hidden'); }
 document.getElementById('btn-import-lezioni').addEventListener('click', () => lezCsvOverlay.classList.remove('hidden'));
 document.getElementById('lez-csv-close').addEventListener('click', closeLezCsv);
 document.getElementById('lez-csv-cancel').addEventListener('click', closeLezCsv);
-lezCsvOverlay.addEventListener('click', e => { if (e.target === lezCsvOverlay) closeLezCsv(); });
 document.getElementById('lez-csv-choose').addEventListener('click', () => document.getElementById('lez-csv-file').click());
 document.getElementById('lez-csv-template').addEventListener('click', () => {
   const oggi = fmtData(todayISO());
@@ -5959,7 +6094,6 @@ document.getElementById('btn-add-todo').addEventListener('click', () => openTodo
 function closeTodoModal() { document.getElementById('todo-overlay').classList.add('hidden'); todoCtx = null; }
 document.getElementById('todo-close').addEventListener('click', closeTodoModal);
 document.getElementById('todo-cancel').addEventListener('click', closeTodoModal);
-document.getElementById('todo-overlay').addEventListener('click', e => { if (e.target.id === 'todo-overlay') closeTodoModal(); });
 document.getElementById('todo-save').addEventListener('click', async () => {
   const titolo = document.getElementById('td-titolo').value.trim();
   if (!titolo) { alert('Il titolo è obbligatorio.'); return; }
@@ -6083,9 +6217,6 @@ function openOrarioPeriodo(anno, ora) {
 function closeOrarioSlot() { document.getElementById('orario-slot-overlay').classList.add('hidden'); orarioSlotCtx = null; }
 document.getElementById('orario-slot-close').addEventListener('click', closeOrarioSlot);
 document.getElementById('orario-slot-cancel').addEventListener('click', closeOrarioSlot);
-document.getElementById('orario-slot-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('orario-slot-overlay')) closeOrarioSlot();
-});
 document.getElementById('orario-slot-save').addEventListener('click', async () => {
   if (!orarioSlotCtx) return;
   try {
@@ -6652,7 +6783,6 @@ function closeMaterialeModal() { document.getElementById('materiale-overlay').cl
 document.getElementById('btn-add-materiale').addEventListener('click', () => openMaterialeModal(null));
 document.getElementById('materiale-close').addEventListener('click', closeMaterialeModal);
 document.getElementById('materiale-cancel').addEventListener('click', closeMaterialeModal);
-document.getElementById('materiale-overlay').addEventListener('click', e => { if (e.target.id === 'materiale-overlay') closeMaterialeModal(); });
 
 function materialeCloneOverlay() {
   const u = DB.getMaterialeUser();
@@ -6799,7 +6929,8 @@ function setModalProfilo(s) {
   const el = document.getElementById('modal-profilo');
   const b = profiloBadge(s);
   el.textContent = b;
-  el.className = 'profilo-badge' + (b ? ' pb-' + s.profilo.toLowerCase() : ' hidden');
+  el.className = 'profilo-badge' + (b ? ' pb-' + s.profilo.toLowerCase() + ' pb-clickable' : ' hidden');
+  el.onclick = b ? () => goToBes(s) : null;
 }
 
 // Riepilogo votazioni: una riga per materia con media, numero di voti e
@@ -7363,8 +7494,13 @@ function openForm(mode, ctx) {
           </select>
         </label>
       </div>
-      <label class="vf-label" id="f-ptipo-wrap">Tipologie (selezionabili più di una)
-        <div class="mc-list" id="f-ptipi-list"></div>
+      <label class="vf-label" id="f-ptipo-wrap">Tipologie
+        <div id="f-ptipi-wrap"></div>
+      </label>
+      <label class="vf-label hidden" id="f-pei-prog-wrap">Tipo di programmazione
+        <select class="vf-input" id="f-pei-prog">
+          ${Object.entries(PEI_PROGRAMMAZIONE).map(([c, l]) => `<option value="${c}" ${v.peiProgrammazione === c ? 'selected' : ''}>${escHtml(l)}</option>`).join('')}
+        </select>
       </label>
       <label class="vf-label">Note<textarea class="vf-input" id="f-note">${escHtml(v.note || '')}</textarea></label>`;
 
@@ -7380,23 +7516,21 @@ function openForm(mode, ctx) {
       }
     });
 
-    // Tipologie dipendenti dal profilo (checkbox multiple, codici PROFILO_TIPI)
+    // Tipologie dipendenti dal profilo (tendina multi-selezione, codici
+    // PROFILO_TIPI) + "Tipo di programmazione" visibile solo per PEI
     const selP = document.getElementById('f-profilo');
     const wrapT = document.getElementById('f-ptipo-wrap');
-    const listT = document.getElementById('f-ptipi-list');
-    function syncTipo() {
+    const ptipiWrap = document.getElementById('f-ptipi-wrap');
+    const peiProgWrap = document.getElementById('f-pei-prog-wrap');
+    function syncTipo(preselected) {
       const tipi = PROFILO_TIPI[selP.value];
       wrapT.classList.toggle('hidden', !tipi);
-      listT.innerHTML = tipi
-        ? tipi.map(t => `
-          <label class="mc-chk">
-            <input type="checkbox" value="${t.c}" ${vTipi.includes(t.c) ? 'checked' : ''}/>
-            <span>${escHtml(t.l)}</span>
-          </label>`).join('')
-        : '';
+      peiProgWrap.classList.toggle('hidden', selP.value !== 'PEI');
+      ptipiWrap.innerHTML = tipi ? msDropdownHtml('f-ptipi', tipi, preselected || []) : '';
+      if (tipi) wireMsDropdown('f-ptipi');
     }
-    selP.addEventListener('change', syncTipo);
-    syncTipo();
+    selP.addEventListener('change', () => syncTipo([]));
+    syncTipo(vTipi);
   }
   formOverlay.classList.remove('hidden');
   setTimeout(() => body.querySelector('input,select,textarea')?.focus(), 30);
@@ -7479,13 +7613,13 @@ async function saveForm() {
       const nome = val('f-nome'), cognome = val('f-cognome');
       if (!nome && !cognome) { alert('Inserisci almeno nome o cognome.'); return; }
       const profilo = val('f-profilo') || 'ND';
-      const profiloTipo = profilo === 'ND' ? [] :
-        [...document.querySelectorAll('#f-ptipi-list input:checked')].map(i => i.value);
+      const profiloTipo = profilo === 'ND' ? [] : msDropdownSelected('f-ptipi');
+      const peiProgrammazione = profilo === 'PEI' ? val('f-pei-prog') : '';
       const anno = val('f-anno-s') || DB.currentAnno();
       const classe = val('f-classe');
       if (formMode === 'student-edit') {
         const s = state.students.find(x => x.id === state.openId);
-        Object.assign(s, { nome, cognome, profilo, profiloTipo, note: val('f-note') });
+        Object.assign(s, { nome, cognome, profilo, profiloTipo, peiProgrammazione, note: val('f-note') });
         DB.enroll(s, anno, classe);
         await DB.put(s);
         closeForm();
@@ -7498,6 +7632,7 @@ async function saveForm() {
         DB.enroll(s, anno, classe);
         s.profilo = profilo;
         s.profiloTipo = profiloTipo;
+        s.peiProgrammazione = peiProgrammazione;
         s.note = val('f-note');
         await DB.put(s);
         state.students.push(s);
@@ -7527,7 +7662,6 @@ document.getElementById('btn-add-grade-classe').addEventListener('click', () => 
 document.getElementById('form-save').addEventListener('click', saveForm);
 document.getElementById('form-cancel').addEventListener('click', closeForm);
 document.getElementById('form-close').addEventListener('click', closeForm);
-formOverlay.addEventListener('click', e => { if (e.target === formOverlay) closeForm(); });
 document.getElementById('form-body').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); saveForm(); }
 });
@@ -7539,7 +7673,6 @@ function closeCsv() { csvOverlay.classList.add('hidden'); }
 document.getElementById('btn-import-csv').addEventListener('click', () => csvOverlay.classList.remove('hidden'));
 document.getElementById('csv-close').addEventListener('click', closeCsv);
 document.getElementById('csv-cancel').addEventListener('click', closeCsv);
-csvOverlay.addEventListener('click', e => { if (e.target === csvOverlay) closeCsv(); });
 document.getElementById('csv-choose').addEventListener('click', () => document.getElementById('csv-file').click());
 
 // Normalizza profilo/tipologia dai valori CSV ai codici interni.
@@ -7652,10 +7785,8 @@ function closeVotiPreview() { votiPreviewOverlay.classList.add('hidden'); votiPe
 
 document.getElementById('btn-import-voti').addEventListener('click', () => votiImportOverlay.classList.remove('hidden'));
 document.getElementById('voti-import-close').addEventListener('click', closeVotiImport);
-votiImportOverlay.addEventListener('click', e => { if (e.target === votiImportOverlay) closeVotiImport(); });
 document.getElementById('voti-preview-close').addEventListener('click', closeVotiPreview);
 document.getElementById('voti-preview-cancel').addEventListener('click', closeVotiPreview);
-votiPreviewOverlay.addEventListener('click', e => { if (e.target === votiPreviewOverlay) closeVotiPreview(); });
 
 // Normalizza un nome per il confronto (case/accenti/spazi non contano)
 function normName(s) {
