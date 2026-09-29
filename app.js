@@ -39,6 +39,7 @@ const state = {
   calRefDate: null,        // data di riferimento (YYYY-MM-DD) per Calendario, indipendente da lezRefDate
   calFilters: { colloqui: true, appuntamenti: true, uscite: true }, // tipi visibili in Calendario (mai le lezioni: hanno la propria vista)
   lezRefDate: null,        // data di riferimento (YYYY-MM-DD) per le viste settimana/calendario
+  orarioConfigId: null,    // id dell'orario mostrato/modificato nella vista Orario (più orario per anno)
   raggruppa: {             // "Raggruppa" per vista: booleano (solo classe) ovunque
     voti: false, alunni: false, bes: false, compiti: false, colloqui: false,
     // eccetto lezioni (prototipo Notion): null oppure 'classe'|'materia'|'giorno'|'ora'
@@ -3949,7 +3950,8 @@ function bmScoreChipsHtml(s) {
 // partecipanti, note) sono invece un pacchetto per anno scolastico a sé.
 function renderColloquioSlots() {
   const anno = state.year !== 'all' ? state.year : DB.currentAnno();
-  const { slots } = DB.getOrario(anno);
+  const config = orarioConfigForDate(anno, todayISO());
+  const slots = config?.slots || [];
   const collSlots = slots.filter(sl => sl.materia === 'Colloqui');
   const list = document.getElementById('coll-slots-list');
   list.innerHTML = collSlots.length ? collSlots.map(sl => `
@@ -3967,7 +3969,7 @@ function renderColloquioSlots() {
   if (!daEl.value) daEl.value = todayISO();
 
   list.querySelectorAll('[data-rm-slot]').forEach(btn => btn.addEventListener('click', async () => {
-    try { await DB.setOrarioSlots(anno, slots.filter(sl => sl.id !== btn.dataset.rmSlot)); renderAll(); }
+    try { await DB.setOrarioConfigSlots(anno, config.id, slots.filter(sl => sl.id !== btn.dataset.rmSlot)); renderAll(); }
     catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
   }));
 }
@@ -3992,14 +3994,18 @@ document.getElementById('coll-slot-add').addEventListener('click', async () => {
   const a = document.getElementById('coll-slot-a').value;
   if (!da || !a) { alert('Imposta il periodo (dal / al) per generare gli appuntamenti.'); return; }
   if (da > a) { alert('"Dal" deve precedere "al".'); return; }
-  const { slots, periodi } = DB.getOrario(anno);
-  const existing = slots.find(sl => sl.giorno === giorno && sl.ora === ora);
-  if (existing && existing.materia !== 'Colloqui') {
-    alert('In quell\'ora c\'è già una lezione in orario: liberala prima da Orario.');
-    return;
-  }
   try {
-    if (!existing) await DB.setOrarioSlots(anno, [...slots, { id: DB.uid(), giorno, ora, materia: 'Colloqui', classe: '' }]);
+    // Nessun orario ancora definito per l'anno: se ne crea uno di default al
+    // volo, così l'orario di ricevimento resta impostabile subito
+    let config = orarioConfigForDate(anno, todayISO());
+    if (!config) config = await DB.addOrarioConfig(anno, { titolo: 'Orario' });
+    const { slots, periodi } = config;
+    const existing = slots.find(sl => sl.giorno === giorno && sl.ora === ora);
+    if (existing && existing.materia !== 'Colloqui') {
+      alert('In quell\'ora c\'è già una lezione in orario: liberala prima da Orario.');
+      return;
+    }
+    if (!existing) await DB.setOrarioConfigSlots(anno, config.id, [...slots, { id: DB.uid(), giorno, ora, materia: 'Colloqui', classe: '' }]);
 
     const dates = datesInRangeForGiorno(da, a, giorno);
     if (!dates.length) { alert('Nessuna data trovata in quel periodo per il giorno selezionato.'); renderAll(); return; }
@@ -5014,7 +5020,7 @@ function renderLezioniSettimana() {
   const usciteByDate = {};
   usciteRows().forEach(({ anno, u }) => {
     if (!daysSet.has(u.data)) return;
-    (usciteByDate[u.data] ||= []).push({ anno, u, periodi: periodiOverlapping(anno, u.oraInizio, u.oraFine) });
+    (usciteByDate[u.data] ||= []).push({ anno, u, periodi: periodiOverlapping(anno, u.oraInizio, u.oraFine, u.data) });
   });
   const usciteExtraByDate = {};
   Object.entries(usciteByDate).forEach(([data, items]) => {
@@ -5100,7 +5106,7 @@ function renderWeekNowLine() {
   const days = [...Array(numGiorni)].map((_, i) => addDays(start, i));
   if (!days.some(d => toISO(d) === todayIso)) { line.style.display = 'none'; return; }
 
-  const { periodi } = DB.getOrario(annoFromData(todayIso));
+  const periodi = orarioConfigForDate(annoFromData(todayIso), todayIso)?.periodi || {};
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
@@ -5128,11 +5134,11 @@ setInterval(() => {
 
 // Ore della scansione oraria (1..ORE_MAX) che si sovrappongono, anche solo
 // parzialmente, alla fascia [oraInizio, oraFine] di un'uscita didattica —
-// stessa logica di renderWeekNowLine (fasce da DB.getOrario(anno).periodi),
-// usata per posizionare l'uscita nella cella giusta della griglia Settimana
-function periodiOverlapping(anno, oraInizio, oraFine) {
+// stessa logica di renderWeekNowLine (fasce dell'orario valido in quella
+// data), usata per posizionare l'uscita nella cella giusta della Settimana
+function periodiOverlapping(anno, oraInizio, oraFine, dateStr) {
   if (!oraInizio || !oraFine) return [];
-  const { periodi } = DB.getOrario(anno);
+  const periodi = orarioConfigForDate(anno, dateStr)?.periodi || {};
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
   const uStart = toMin(oraInizio), uEnd = toMin(oraFine);
   if (uEnd <= uStart) return [];
@@ -5431,6 +5437,24 @@ function isoDayGiorno(dateStr) {
   const dow = (d.getDay() + 6) % 7 + 1;
   return dow >= 1 && dow <= 6 ? dow : null;
 }
+// Quale dei più orario definiti per l'anno vale in una data precisa (titolo
+// + validità dataInizio/dataFine, entrambe facoltative): preferisce quello
+// la cui validità include la data, altrimenti quello "sempre valido" (senza
+// date), altrimenti il primo — usata ovunque serva "l'orario di oggi/quella
+// data" (autofill Lezione, linea now, posizionamento Uscite, sabato attivo…)
+function orarioConfigForDate(anno, dateStr) {
+  const configs = DB.getOrarioConfigs(anno);
+  if (!configs.length) return null;
+  const inRange = configs.find(c =>
+    (c.dataInizio || c.dataFine)
+    && (!c.dataInizio || dateStr >= c.dataInizio)
+    && (!c.dataFine || dateStr <= c.dataFine));
+  return inRange || configs.find(c => !c.dataInizio && !c.dataFine) || configs[0];
+}
+function orarioConfigRangeLabel(c) {
+  if (!c.dataInizio && !c.dataFine) return "Tutto l'anno";
+  return `dal ${c.dataInizio ? fmtDateIt(c.dataInizio) : '…'} al ${c.dataFine ? fmtDateIt(c.dataFine) : '…'}`;
+}
 function fmtDateIt(iso) {
   const d = new Date(iso + 'T00:00:00');
   return `${DOW_LABELS[(d.getDay() + 6) % 7]} ${d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}`;
@@ -5489,10 +5513,12 @@ function lezioneFormBody(l, anno) {
     <div class="vf-row">
       <label class="vf-label">Compiti<textarea class="vf-input" id="lz-compiti">${escHtml(l.compiti || '')}</textarea></label>
       <label class="vf-label">Scadenza compiti
-        <input type="date" class="vf-input" id="lz-scadenza" value="${escHtml(l.scadenza || '')}"/>
-        <div class="vf-chip-picker" id="lz-scadenza-suggerite">${scadOpts.map(iso => `
-          <button type="button" class="vf-chip-toggle" data-date="${iso}">${escHtml(fmtDateIt(iso))}</button>`).join('')}
-        </div>
+        <select class="vf-input" id="lz-scadenza">
+          <option value="__custom__">Altra data…</option>
+          <option value="" ${!l.scadenza ? 'selected' : ''}>Nessuna</option>
+          ${scadOpts.map(iso => `<option value="${iso}" ${l.scadenza === iso ? 'selected' : ''}>${escHtml(fmtDateIt(iso))}</option>`).join('')}
+        </select>
+        <input type="date" class="vf-input hidden" id="lz-scadenza-custom"/>
       </label>
     </div>
     <label class="vf-label">Note<textarea class="vf-input" id="lz-note">${escHtml(l.note || '')}</textarea></label>`;
@@ -5507,28 +5533,39 @@ function wireLezioneFormEvents(anno) {
   const classeEl = document.getElementById('lz-classe');
   const materiaEl = document.getElementById('lz-materia');
   const scadEl = document.getElementById('lz-scadenza');
+  const scadCustomEl = document.getElementById('lz-scadenza-custom');
 
-  // Scadenza compiti: campo data libero (si può sempre scrivere/scegliere
-  // una data qualunque) più chip di scorciatoia sulle prossime lezioni già
-  // fissate in calendario per quella classe, cliccabili per compilarlo al volo
-  function refreshScadenzaOptions() {
-    const cur = scadEl.value;
+  // Scadenza compiti: una select con le prossime lezioni già fissate in
+  // calendario per quella classe (sempre visibili, niente pill), più
+  // un'opzione "Altra data…" che rivela un campo data libero — una volta
+  // scelta, la data libera rientra come opzione normale della select
+  // (scadenzaOptions la include sempre, vedi sopra), niente stato "custom"
+  // persistente da tracciare a parte
+  function refreshScadenzaOptions(overrideDate) {
+    const cur = overrideDate !== undefined ? overrideDate : (scadEl.value === '__custom__' ? '' : scadEl.value);
     const effAnno = annoFromData(dataEl.value) || anno;
     const opts = scadenzaOptions(effAnno, classeEl.value.trim(), dataEl.value, cur);
-    document.getElementById('lz-scadenza-suggerite').innerHTML = opts.map(iso => `
-      <button type="button" class="vf-chip-toggle ${cur === iso ? 'active' : ''}" data-date="${iso}">${escHtml(fmtDateIt(iso))}</button>`).join('');
-    document.querySelectorAll('#lz-scadenza-suggerite .vf-chip-toggle').forEach(btn => btn.addEventListener('click', () => {
-      scadEl.value = btn.dataset.date;
-      refreshScadenzaOptions();
-    }));
+    scadEl.innerHTML = '<option value="__custom__">Altra data…</option>' +
+      `<option value="" ${!cur ? 'selected' : ''}>Nessuna</option>` +
+      opts.map(iso => `<option value="${iso}" ${cur === iso ? 'selected' : ''}>${escHtml(fmtDateIt(iso))}</option>`).join('');
+    scadCustomEl.classList.add('hidden');
+    scadCustomEl.value = '';
   }
-  scadEl.addEventListener('input', refreshScadenzaOptions);
+  // Niente focus() automatico sul campo data rivelato: spostare il focus da
+  // dentro l'handler "change" della select stessa, mentre il browser ne sta
+  // ancora committando il valore, può fargli perdere la selezione appena
+  // fatta (osservato in modo riproducibile) — l'utente vi clicca da sé
+  scadEl.addEventListener('change', () => {
+    scadCustomEl.classList.toggle('hidden', scadEl.value !== '__custom__');
+  });
+  scadCustomEl.addEventListener('change', () => { if (scadCustomEl.value) refreshScadenzaOptions(scadCustomEl.value); });
   function autofillFromOrario() {
     const giorno = isoDayGiorno(dataEl.value);
     const ora = +oraEl.value;
     if (giorno && ora) {
       const effAnno = annoFromData(dataEl.value) || anno;
-      const slot = DB.getOrario(effAnno).slots.find(sl => sl.giorno === giorno && sl.ora === ora);
+      const config = orarioConfigForDate(effAnno, dataEl.value);
+      const slot = config?.slots.find(sl => sl.giorno === giorno && sl.ora === ora);
       if (slot) { classeEl.value = slot.classe || ''; materiaEl.value = slot.materia || ''; }
     }
     refreshScadenzaOptions();
@@ -5560,8 +5597,8 @@ function wireLezioneFormEvents(anno) {
 
   oraEl.addEventListener('change', autofillFromOrario);
   dataEl.addEventListener('change', autofillFromOrario);
-  classeEl.addEventListener('change', refreshScadenzaOptions);
-  classeEl.addEventListener('input', refreshScadenzaOptions);
+  classeEl.addEventListener('change', () => refreshScadenzaOptions());
+  classeEl.addEventListener('input', () => refreshScadenzaOptions());
   classeEl.addEventListener('input', refreshMateriaOptionsForClasse);
   materiaEl.addEventListener('input', refreshClasseOptionsForMateria);
   refreshMateriaOptionsForClasse();
@@ -5583,7 +5620,8 @@ function openLezioneNew(defaultData, defaultOra) {
   const data = defaultData || todayISO();
   const anno = annoFromData(data);
   const giorno = defaultOra ? isoDayGiorno(data) : null;
-  const slot = giorno ? DB.getOrario(anno).slots.find(sl => sl.giorno === giorno && sl.ora === +defaultOra) : null;
+  const config = giorno ? orarioConfigForDate(anno, data) : null;
+  const slot = config?.slots.find(sl => sl.giorno === giorno && sl.ora === +defaultOra);
   document.getElementById('lezione-title').textContent = 'Nuova lezione';
   document.getElementById('lezione-body').innerHTML = lezioneFormBody({
     data, ora: defaultOra || '',
@@ -5602,9 +5640,13 @@ document.getElementById('lezione-save').addEventListener('click', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('lz-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
+  // Se "Altra data…" è ancora selezionata (l'utente non ha confermato una
+  // data nel campo rivelato), ripiega sul suo valore invece del sentinella
+  const scadRaw = val('lz-scadenza');
+  const scadenza = scadRaw === '__custom__' ? val('lz-scadenza-custom') : scadRaw;
   const attrs = {
     data, ora: val('lz-ora'), classe: val('lz-classe'), materia: val('lz-materia'), argomento: val('lz-argomento'),
-    compiti: val('lz-compiti'), scadenza: val('lz-scadenza'), note: val('lz-note'), tipo: val('lz-tipo'),
+    compiti: val('lz-compiti'), scadenza, note: val('lz-note'), tipo: val('lz-tipo'),
   };
   const newAnno = annoFromData(data);
   try {
@@ -6131,17 +6173,37 @@ document.getElementById('todo-delete').addEventListener('click', async () => {
 // vale per tutti i giorni; materia/classe restano invece per singola cella.
 const GIORNI_ORARIO = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const ORE_MAX = 10; // 1-8 mattutine + 2 pomeridiane
-// Giorni da mostrare in griglia per quell'anno: esclude il sabato se disattivato
+// Giorni da mostrare in griglia per quell'anno: esclude il sabato se
+// disattivato nell'orario valido oggi (o il primo, se nessuno lo è)
 function giorniAttivi(anno) {
-  return DB.getOrario(anno).sabato === false ? GIORNI_ORARIO.slice(0, 5) : GIORNI_ORARIO;
+  return orarioConfigForDate(anno, todayISO())?.sabato === false ? GIORNI_ORARIO.slice(0, 5) : GIORNI_ORARIO;
 }
+
+// Più orario possono coesistere per lo stesso anno (titolo + validità da/a):
+// una select in alto sceglie quale mostrare/modificare in griglia
 function renderOrario() {
   const anno = state.year !== 'all' ? state.year : DB.currentAnno();
-  const { slots, periodi, sabato } = DB.getOrario(anno);
+  const configs = DB.getOrarioConfigs(anno);
+  if (!configs.some(c => c.id === state.orarioConfigId)) {
+    state.orarioConfigId = (orarioConfigForDate(anno, todayISO()) || configs[0])?.id || null;
+  }
+  const config = configs.find(c => c.id === state.orarioConfigId) || null;
+
+  document.getElementById('orario-config-select').innerHTML = configs.map(c =>
+    `<option value="${c.id}" ${c.id === state.orarioConfigId ? 'selected' : ''}>${escHtml(c.titolo)} — ${escHtml(orarioConfigRangeLabel(c))}</option>`).join('');
+  document.getElementById('btn-orario-config-edit').classList.toggle('hidden', !config);
+  document.getElementById('btn-orario-config-rm').classList.toggle('hidden', !config);
+  document.getElementById('orario-config-select').classList.toggle('hidden', !configs.length);
+  document.getElementById('orario-empty').classList.toggle('hidden', !!configs.length);
+  document.getElementById('orario-panel').classList.toggle('hidden', !config);
+  document.getElementById('btn-orario-sabato').classList.toggle('hidden', !config);
+  if (!config) { document.getElementById('orario-info').textContent = ''; return; }
+
+  const { slots, periodi, sabato } = config;
   document.getElementById('orario-info').textContent =
     `Anno ${anno}${state.year === 'all' ? ' (imposta il filtro Anno in alto per cambiarlo)' : ''} — clicca una cella per modificarla, clicca il numero dell'ora per impostarne la fascia oraria`;
   document.getElementById('btn-orario-sabato').textContent = sabato === false ? 'Includi il sabato' : 'Elimina il sabato';
-  const giorni = giorniAttivi(anno);
+  const giorni = sabato === false ? GIORNI_ORARIO.slice(0, 5) : GIORNI_ORARIO;
   const map = {};
   slots.forEach(sl => { map[sl.giorno + '|' + sl.ora] = sl; });
 
@@ -6164,24 +6226,83 @@ function renderOrario() {
   </table>`;
 
   document.querySelectorAll('#orario-wrap .orario-cell').forEach(cell =>
-    cell.addEventListener('click', () => openOrarioCell(anno, +cell.dataset.giorno, +cell.dataset.ora)));
+    cell.addEventListener('click', () => openOrarioCell(anno, config.id, +cell.dataset.giorno, +cell.dataset.ora)));
   document.querySelectorAll('#orario-wrap .orario-ora').forEach(th =>
-    th.addEventListener('click', () => openOrarioPeriodo(anno, +th.dataset.ora)));
+    th.addEventListener('click', () => openOrarioPeriodo(anno, config.id, +th.dataset.ora)));
 }
+document.getElementById('orario-config-select').addEventListener('change', e => {
+  state.orarioConfigId = e.target.value;
+  renderOrario();
+});
 document.getElementById('btn-orario-sabato').addEventListener('click', async () => {
   const anno = state.year !== 'all' ? state.year : DB.currentAnno();
-  const includeOra = DB.getOrario(anno).sabato === false; // sta per diventare true
+  const config = DB.getOrarioConfig(anno, state.orarioConfigId);
+  if (!config) return;
   try {
-    await DB.setOrarioSabato(anno, includeOra);
+    await DB.setOrarioConfigSabato(anno, config.id, config.sabato === false);
     renderOrario();
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 });
 
-let orarioSlotCtx = null; // { type: 'cell', anno, giorno, ora } | { type: 'periodo', anno, ora }
+// ── Modale "Nuovo/Modifica orario" (titolo + validità da/a) ──────────
+let orarioConfigModalCtx = null; // { anno, id } se in modifica, null se nuovo
+function openOrarioConfigModal(anno, existing) {
+  orarioConfigModalCtx = { anno, id: existing?.id || null };
+  document.getElementById('orario-config-modal-title').textContent = existing ? 'Modifica orario' : 'Nuovo orario';
+  document.getElementById('oc-titolo').value = existing?.titolo || '';
+  document.getElementById('oc-data-da').value = existing?.dataInizio || '';
+  document.getElementById('oc-data-a').value = existing?.dataFine || '';
+  document.getElementById('orario-config-overlay').classList.remove('hidden');
+}
+function closeOrarioConfigModal() { document.getElementById('orario-config-overlay').classList.add('hidden'); orarioConfigModalCtx = null; }
+document.getElementById('orario-config-close').addEventListener('click', closeOrarioConfigModal);
+document.getElementById('orario-config-cancel').addEventListener('click', closeOrarioConfigModal);
+document.getElementById('btn-orario-config-add').addEventListener('click', () => {
+  const anno = state.year !== 'all' ? state.year : DB.currentAnno();
+  openOrarioConfigModal(anno, null);
+});
+document.getElementById('btn-orario-config-edit').addEventListener('click', () => {
+  const anno = state.year !== 'all' ? state.year : DB.currentAnno();
+  const config = DB.getOrarioConfig(anno, state.orarioConfigId);
+  if (config) openOrarioConfigModal(anno, config);
+});
+document.getElementById('btn-orario-config-rm').addEventListener('click', async () => {
+  const anno = state.year !== 'all' ? state.year : DB.currentAnno();
+  const config = DB.getOrarioConfig(anno, state.orarioConfigId);
+  if (!config) return;
+  if (!confirm(`Eliminare l'orario "${config.titolo}"? Tutte le sue celle andranno perse.`)) return;
+  try {
+    await DB.removeOrarioConfig(anno, config.id);
+    state.orarioConfigId = null;
+    renderOrario();
+  } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
+});
+document.getElementById('orario-config-save').addEventListener('click', async () => {
+  if (!orarioConfigModalCtx) return;
+  const { anno, id } = orarioConfigModalCtx;
+  const titolo = document.getElementById('oc-titolo').value.trim();
+  if (!titolo) { alert('Il titolo è obbligatorio.'); return; }
+  const dataInizio = document.getElementById('oc-data-da').value;
+  const dataFine = document.getElementById('oc-data-a').value;
+  try {
+    if (id) {
+      await DB.updateOrarioConfigMeta(anno, id, { titolo, dataInizio, dataFine });
+    } else {
+      const created = await DB.addOrarioConfig(anno, { titolo, dataInizio, dataFine });
+      state.orarioConfigId = created.id;
+    }
+    closeOrarioConfigModal();
+    renderOrario();
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+});
 
-function openOrarioCell(anno, giorno, ora) {
-  const existing = DB.getOrario(anno).slots.find(sl => sl.giorno === giorno && sl.ora === ora);
-  orarioSlotCtx = { type: 'cell', anno, giorno, ora };
+let orarioSlotCtx = null; // { type: 'cell', anno, configId, giorno, ora } | { type: 'periodo', anno, configId, ora }
+
+function openOrarioCell(anno, configId, giorno, ora) {
+  const config = DB.getOrarioConfig(anno, configId);
+  if (!config) return;
+  const existing = config.slots.find(sl => sl.giorno === giorno && sl.ora === ora);
+  orarioSlotCtx = { type: 'cell', anno, configId, giorno, ora };
   document.getElementById('orario-slot-title').textContent = `${GIORNI_ORARIO[giorno - 1]} · ${ora}ª ora`;
   document.getElementById('orario-slot-body').innerHTML = `
     <div class="vf-row">
@@ -6199,9 +6320,11 @@ function openOrarioCell(anno, giorno, ora) {
   document.getElementById('orario-slot-overlay').classList.remove('hidden');
 }
 
-function openOrarioPeriodo(anno, ora) {
-  const existing = DB.getOrario(anno).periodi[ora];
-  orarioSlotCtx = { type: 'periodo', anno, ora };
+function openOrarioPeriodo(anno, configId, ora) {
+  const config = DB.getOrarioConfig(anno, configId);
+  if (!config) return;
+  const existing = config.periodi[ora];
+  orarioSlotCtx = { type: 'periodo', anno, configId, ora };
   document.getElementById('orario-slot-title').textContent = `Fascia oraria — ${ora}ª ora`;
   document.getElementById('orario-slot-body').innerHTML = `
     <p class="modal-desc">Vale per tutti i giorni: la ${ora}ª ora è sempre alla stessa fascia oraria.</p>
@@ -6220,18 +6343,19 @@ document.getElementById('orario-slot-cancel').addEventListener('click', closeOra
 document.getElementById('orario-slot-save').addEventListener('click', async () => {
   if (!orarioSlotCtx) return;
   try {
+    const { anno, configId } = orarioSlotCtx;
     if (orarioSlotCtx.type === 'periodo') {
-      const { anno, ora } = orarioSlotCtx;
+      const { ora } = orarioSlotCtx;
       const inizio = document.getElementById('os-inizio').value;
       const fine = document.getElementById('os-fine').value;
-      await DB.setOrarioPeriodo(anno, ora, { inizio, fine });
+      await DB.setOrarioConfigPeriodo(anno, configId, ora, { inizio, fine });
     } else {
-      const { anno, giorno, ora } = orarioSlotCtx;
+      const { giorno, ora } = orarioSlotCtx;
       const materia = document.getElementById('os-materia').value.trim();
       const classe = document.getElementById('os-classe').value.trim();
-      const slots = DB.getOrario(anno).slots.filter(sl => !(sl.giorno === giorno && sl.ora === ora));
+      const slots = DB.getOrarioConfig(anno, configId).slots.filter(sl => !(sl.giorno === giorno && sl.ora === ora));
       if (materia || classe) slots.push({ id: DB.uid(), giorno, ora, materia, classe });
-      await DB.setOrarioSlots(anno, slots);
+      await DB.setOrarioConfigSlots(anno, configId, slots);
     }
     closeOrarioSlot();
     renderOrario();
@@ -6240,13 +6364,14 @@ document.getElementById('orario-slot-save').addEventListener('click', async () =
 document.getElementById('orario-slot-delete').addEventListener('click', async () => {
   if (!orarioSlotCtx) return;
   try {
+    const { anno, configId } = orarioSlotCtx;
     if (orarioSlotCtx.type === 'periodo') {
-      const { anno, ora } = orarioSlotCtx;
-      await DB.setOrarioPeriodo(anno, ora, { inizio: '', fine: '' });
+      const { ora } = orarioSlotCtx;
+      await DB.setOrarioConfigPeriodo(anno, configId, ora, { inizio: '', fine: '' });
     } else {
-      const { anno, giorno, ora } = orarioSlotCtx;
-      const slots = DB.getOrario(anno).slots.filter(sl => !(sl.giorno === giorno && sl.ora === ora));
-      await DB.setOrarioSlots(anno, slots);
+      const { giorno, ora } = orarioSlotCtx;
+      const slots = DB.getOrarioConfig(anno, configId).slots.filter(sl => !(sl.giorno === giorno && sl.ora === ora));
+      await DB.setOrarioConfigSlots(anno, configId, slots);
     }
     closeOrarioSlot();
     renderOrario();

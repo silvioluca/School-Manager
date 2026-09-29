@@ -939,13 +939,32 @@
       </div>
     </section>
 
-    <!-- Orario view: orario settimanale ricorrente del docente, per anno -->
+    <!-- Orario view: orario settimanale ricorrente del docente, per anno —
+         più orario possono coesistere (titolo + validità da/a), scelti da
+         una select in alto (es. "Provvisorio" a settembre, poi "Definitivo") -->
     <section id="view-orario" class="hidden">
       <div class="view-toolbar">
+        <select class="vf-input" id="orario-config-select" style="max-width:260px"></select>
+        <button class="btn-icon" id="btn-orario-config-edit" title="Modifica questo orario">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="btn-icon btn-icon-danger" id="btn-orario-config-rm" title="Elimina questo orario">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+        <button class="btn-icon btn-icon-primary" id="btn-orario-config-add" title="Nuovo orario">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
         <span class="toolbar-info" id="orario-info"></span>
         <button class="btn-ghost" id="btn-orario-sabato">Elimina il sabato</button>
       </div>
-      <div class="panel table-panel">
+      <div class="empty-state hidden" id="orario-empty">
+        <div class="empty-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3>Nessun orario impostato</h3>
+        <p>Aggiungi un orario con "+" (dagli un titolo, e facoltativamente un periodo di validità) per iniziare a compilare la griglia.</p>
+      </div>
+      <div class="panel table-panel" id="orario-panel">
         <div class="table-wrap" id="orario-wrap"></div>
       </div>
     </section>
@@ -1608,6 +1627,27 @@
       <button class="btn-ghost btn-danger-ghost hidden" id="orario-slot-delete" type="button">Libera</button>
       <button class="btn-ghost" id="orario-slot-cancel" type="button">Annulla</button>
       <button class="btn-primary" id="orario-slot-save" type="button">Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal orario: nuovo/modifica orario (titolo + validità da/a) ─── -->
+<div class="modal-overlay hidden" id="orario-config-overlay">
+  <div class="modal-box modal-box-sm">
+    <div class="modal-header">
+      <h2 class="modal-title" id="orario-config-modal-title">Nuovo orario</h2>
+      <button class="btn-icon modal-close" id="orario-config-close" aria-label="Chiudi">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <label class="vf-label">Titolo<input class="vf-input" id="oc-titolo" placeholder="es. Orario definitivo"/></label>
+    <div class="vf-row">
+      <label class="vf-label">Valido dal (facoltativo)<input type="date" class="vf-input" id="oc-data-da"/></label>
+      <label class="vf-label">Valido al (facoltativo)<input type="date" class="vf-input" id="oc-data-a"/></label>
+    </div>
+    <div class="form-foot">
+      <button class="btn-ghost" id="orario-config-cancel" type="button">Annulla</button>
+      <button class="btn-primary" id="orario-config-save" type="button">Salva</button>
     </div>
   </div>
 </div>

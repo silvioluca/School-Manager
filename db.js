@@ -12,7 +12,11 @@
 //                                        insegnate dall'utente in quella classe/anno (info di
 //                                        classe, non di alunno)
 //   users/{uid}/packs/orario         → { json: { "2025/26": {
-//                                          slots: [ {id, giorno, ora, materia, classe}, … ],
+//                                          slots: [ {id, giorno, ora, materia, classe,
+//                                            dataInizio, dataFine}, … ] (dataInizio/dataFine
+//                                            opzionali: una stessa cella giorno/ora può avere
+//                                            più fasce con periodi diversi, es. orario che
+//                                            cambia a gennaio; vuote = valida tutto l'anno),
 //                                          periodi: { "1": {inizio: "08:00", fine: "09:00"}, … },
 //                                          sabato: false
 //                                        }, … } }
@@ -413,52 +417,91 @@ const DB = (() => {
     }
   }
 
-  // ── Orario del docente (ricorrente, per anno scolastico) ────────────
-  // { slots: [ {id, giorno, ora, materia, classe}, … ], periodi: { [ora]: {inizio, fine} },
-  //   sabato: true|false }
-  // periodi è per "ora" (vale per tutti i giorni): la fascia oraria di una
-  // riga non cambia da un giorno all'altro, si imposta una volta sola.
-  // sabato: false nasconde la colonna del sabato (default true, non salvato
-  // finché non viene esplicitamente disattivato).
-  function getOrario(anno) {
+  // ── Orario/i del docente (ricorrenti, per anno scolastico) ──────────
+  // Più orario possono coesistere nello stesso anno, ciascuno con un titolo
+  // e una validità (dataInizio/dataFine, entrambe facoltative = vale tutto
+  // l'anno) — es. "Orario provvisorio" a settembre, poi "Orario definitivo"
+  // da ottobre. Scelto in UI con una select, non più un solo orario per anno.
+  // { configs: [ { id, titolo, dataInizio, dataFine,
+  //     slots: [ {id, giorno, ora, materia, classe}, … ],
+  //     periodi: { [ora]: {inizio, fine} }, sabato: true|false }, … ] }
+  // periodi è per "ora" (vale per tutti i giorni di quell'orario): la fascia
+  // oraria di una riga non cambia da un giorno all'altro, si imposta una
+  // volta sola. sabato: false nasconde la colonna del sabato per quell'orario.
+  function _normalizeOrario(anno) {
     const v = _orario[anno];
-    if (!v) return { slots: [], periodi: {}, sabato: true };
-    if (Array.isArray(v)) return { slots: v, periodi: {}, sabato: true }; // retrocompat schema iniziale
-    return { slots: v.slots || [], periodi: v.periodi || {}, sabato: v.sabato !== false };
+    if (!v) return { configs: [] };
+    if (Array.isArray(v)) // retrocompat: schema iniziale, un array di slot nudo
+      return { configs: [{ id: 'legacy', titolo: 'Orario', dataInizio: '', dataFine: '', slots: v, periodi: {}, sabato: true }] };
+    if (v.configs) return v;
+    // retrocompat: schema intermedio, un solo orario senza titolo/validità
+    return { configs: [{ id: 'legacy', titolo: 'Orario', dataInizio: '', dataFine: '', slots: v.slots || [], periodi: v.periodi || {}, sabato: v.sabato !== false }] };
+  }
+  function getOrarioConfigs(anno) { return _normalizeOrario(anno).configs; }
+  function getOrarioConfig(anno, id) {
+    const configs = getOrarioConfigs(anno);
+    return configs.find(c => c.id === id) || null;
   }
   async function _saveOrario() {
     await packs().doc('orario').set({ json: JSON.stringify(_orario) });
   }
-  // Un anno è "tutto di default" (niente da persistere) solo se non ha slot,
-  // periodi, né il sabato disattivato esplicitamente
-  function _isOrarioDefault(cur) {
-    return cur.sabato !== false && !cur.slots.length && !Object.keys(cur.periodi).length;
-  }
-  async function setOrarioSlots(anno, slots) {
+  async function addOrarioConfig(anno, { titolo, dataInizio, dataFine }) {
     if (!_cache) await all();
-    const cur = getOrario(anno);
-    cur.slots = slots;
-    if (!_isOrarioDefault(cur)) _orario[anno] = cur;
+    const cur = _normalizeOrario(anno);
+    const config = { id: uid(), titolo: titolo || 'Orario', dataInizio: dataInizio || '', dataFine: dataFine || '', slots: [], periodi: {}, sabato: true };
+    cur.configs.push(config);
+    _orario[anno] = cur;
+    await _saveOrario();
+    _cacheDrop();
+    return config;
+  }
+  async function updateOrarioConfigMeta(anno, id, { titolo, dataInizio, dataFine }) {
+    if (!_cache) await all();
+    const cur = _normalizeOrario(anno);
+    const config = cur.configs.find(c => c.id === id);
+    if (!config) return;
+    Object.assign(config, { titolo: titolo || 'Orario', dataInizio: dataInizio || '', dataFine: dataFine || '' });
+    _orario[anno] = cur;
+    await _saveOrario();
+    _cacheDrop();
+  }
+  async function removeOrarioConfig(anno, id) {
+    if (!_cache) await all();
+    const cur = _normalizeOrario(anno);
+    cur.configs = cur.configs.filter(c => c.id !== id);
+    if (cur.configs.length) _orario[anno] = cur;
     else delete _orario[anno];
     await _saveOrario();
     _cacheDrop();
   }
-  async function setOrarioPeriodo(anno, ora, times) {
+  async function setOrarioConfigSlots(anno, id, slots) {
     if (!_cache) await all();
-    const cur = getOrario(anno);
-    if (times.inizio || times.fine) cur.periodi[ora] = times;
-    else delete cur.periodi[ora];
-    if (!_isOrarioDefault(cur)) _orario[anno] = cur;
-    else delete _orario[anno];
+    const cur = _normalizeOrario(anno);
+    const config = cur.configs.find(c => c.id === id);
+    if (!config) return;
+    config.slots = slots;
+    _orario[anno] = cur;
     await _saveOrario();
     _cacheDrop();
   }
-  async function setOrarioSabato(anno, include) {
+  async function setOrarioConfigPeriodo(anno, id, ora, times) {
     if (!_cache) await all();
-    const cur = getOrario(anno);
-    cur.sabato = !!include;
-    if (!_isOrarioDefault(cur)) _orario[anno] = cur;
-    else delete _orario[anno];
+    const cur = _normalizeOrario(anno);
+    const config = cur.configs.find(c => c.id === id);
+    if (!config) return;
+    if (times.inizio || times.fine) config.periodi[ora] = times;
+    else delete config.periodi[ora];
+    _orario[anno] = cur;
+    await _saveOrario();
+    _cacheDrop();
+  }
+  async function setOrarioConfigSabato(anno, id, include) {
+    if (!_cache) await all();
+    const cur = _normalizeOrario(anno);
+    const config = cur.configs.find(c => c.id === id);
+    if (!config) return;
+    config.sabato = !!include;
+    _orario[anno] = cur;
     await _saveOrario();
     _cacheDrop();
   }
@@ -985,7 +1028,8 @@ const DB = (() => {
     getClasseMeta, materieOf, indirizzoOf, istitutoOf, materieMapAll, allIstituti, setClasseMeta,
     getCoordinamento, saveCoordinamento,
     deleteClasse, promuoviClasse,
-    getOrario, setOrarioSlots, setOrarioPeriodo, setOrarioSabato,
+    getOrarioConfigs, getOrarioConfig, addOrarioConfig, updateOrarioConfigMeta, removeOrarioConfig,
+    setOrarioConfigSlots, setOrarioConfigPeriodo, setOrarioConfigSabato,
     getLezioni, addLezione, updateLezione, removeLezione, addLezioniBulk,
     removeLezioniBulk, clearCompitiBulk,
     getRubriche, saveRubriche,
