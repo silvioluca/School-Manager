@@ -669,6 +669,19 @@ header {
 select.vf-input { text-overflow: ellipsis; }
 .vf-input:focus { outline: none; border-color: var(--accent-blue); }
 textarea.vf-input { resize: vertical; min-height: 64px; }
+/* Campo con pulsante "copia" in basso a destra (solo icona, niente
+   contorni/sfondi) — il resize nativo della textarea va disattivato: la sua
+   maniglia occuperebbe lo stesso angolo */
+.vf-copy-wrap { position: relative; }
+.vf-copy-wrap .vf-input { padding-right: 30px; }
+.vf-no-resize { resize: none; }
+.vf-copy-btn {
+  position: absolute; right: 6px; bottom: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: none; background: transparent;
+  color: var(--text-hint); cursor: pointer; transition: color var(--transition);
+}
+.vf-copy-btn:hover { color: var(--accent-blue); }
 
 /* Eccezione: dentro le tabelle Griglia di valutazione (Verifiche), Lezioni,
    Compiti e Voti i campi sembrano testo normale finché non ci passi sopra o

@@ -242,6 +242,23 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.ms-dropdown')) document.querySelectorAll('.ms-dropdown.open').forEach(d => d.classList.remove('open'));
 });
 
+// ── Pulsante "copia" in basso a destra di un campo (solo icona) ──────
+const COPY_ICON_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPY_CHECK_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+// Wira tutti i ".vf-copy-btn" dentro root (va richiamata ogni volta che il
+// markup che li contiene viene rigenerato, es. riapertura di un modale)
+function wireCopyButtons(root) {
+  root.querySelectorAll('.vf-copy-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const target = document.getElementById(btn.dataset.copyTarget);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.value);
+      btn.innerHTML = COPY_CHECK_SVG;
+      setTimeout(() => { btn.innerHTML = COPY_ICON_SVG; }, 1200);
+    } catch {}
+  }));
+}
+
 // ── Indirizzi di studio ministeriali (riordino 2010) ─────────────────
 // Selezionabili a tendina nella scheda classe; l'istituto (nome scuola) resta
 // invece testo libero, perché non standardizzabile.
@@ -5500,28 +5517,26 @@ function lezioneFormBody(l, anno) {
         <datalist id="lz-materie-list">${materieNamesLezioni().map(m => `<option value="${escHtml(m)}">`).join('')}</datalist>
       </label>
     </div>
-    <div class="vf-row">
-      <label class="vf-label">Argomento<input class="vf-input" id="lz-argomento" value="${escHtml(l.argomento || '')}"/></label>
-      <label class="vf-label">Tipo
-        <select class="vf-input" id="lz-tipo">
-          <option value="" ${!l.tipo ? 'selected' : ''}>Lezione normale</option>
-          <option value="verifica" ${l.tipo === 'verifica' ? 'selected' : ''}>Verifica</option>
-          <option value="interrogazione" ${l.tipo === 'interrogazione' ? 'selected' : ''}>Interrogazione</option>
-        </select>
-      </label>
-    </div>
-    <div class="vf-row">
-      <label class="vf-label">Compiti<textarea class="vf-input" id="lz-compiti">${escHtml(l.compiti || '')}</textarea></label>
-      <label class="vf-label">Scadenza compiti
-        <select class="vf-input" id="lz-scadenza">
-          <option value="__custom__">Altra data…</option>
-          <option value="" ${!l.scadenza ? 'selected' : ''}>Nessuna</option>
-          ${scadOpts.map(iso => `<option value="${iso}" ${l.scadenza === iso ? 'selected' : ''}>${escHtml(fmtDateIt(iso))}</option>`).join('')}
-        </select>
-        <input type="date" class="vf-input hidden" id="lz-scadenza-custom"/>
-      </label>
-    </div>
-    <label class="vf-label">Note<textarea class="vf-input" id="lz-note">${escHtml(l.note || '')}</textarea></label>`;
+    <label class="vf-label">Argomento
+      <div class="vf-copy-wrap">
+        <input class="vf-input" id="lz-argomento" value="${escHtml(l.argomento || '')}"/>
+        <button type="button" class="vf-copy-btn" data-copy-target="lz-argomento" title="Copia">${COPY_ICON_SVG}</button>
+      </div>
+    </label>
+    <label class="vf-label">Compiti
+      <div class="vf-copy-wrap">
+        <textarea class="vf-input vf-no-resize" id="lz-compiti">${escHtml(l.compiti || '')}</textarea>
+        <button type="button" class="vf-copy-btn" data-copy-target="lz-compiti" title="Copia">${COPY_ICON_SVG}</button>
+      </div>
+    </label>
+    <label class="vf-label">Scadenza compiti
+      <select class="vf-input" id="lz-scadenza">
+        <option value="__custom__">Altra data…</option>
+        <option value="" ${!l.scadenza ? 'selected' : ''}>Nessuna</option>
+        ${scadOpts.map(iso => `<option value="${iso}" ${l.scadenza === iso ? 'selected' : ''}>${escHtml(fmtDateIt(iso))}</option>`).join('')}
+      </select>
+      <input type="date" class="vf-input hidden" id="lz-scadenza-custom"/>
+    </label>`;
 }
 
 // Ora/Data cambiano → propone classe+materia dall'orario di quel giorno/ora
@@ -5534,6 +5549,7 @@ function wireLezioneFormEvents(anno) {
   const materiaEl = document.getElementById('lz-materia');
   const scadEl = document.getElementById('lz-scadenza');
   const scadCustomEl = document.getElementById('lz-scadenza-custom');
+  wireCopyButtons(document.getElementById('lezione-body'));
 
   // Scadenza compiti: una select con le prossime lezioni già fissate in
   // calendario per quella classe (sempre visibili, niente pill), più
@@ -5644,17 +5660,23 @@ document.getElementById('lezione-save').addEventListener('click', async () => {
   // data nel campo rivelato), ripiega sul suo valore invece del sentinella
   const scadRaw = val('lz-scadenza');
   const scadenza = scadRaw === '__custom__' ? val('lz-scadenza-custom') : scadRaw;
+  // "Note" e "Tipo" non sono più campi di questo modale (restano modificabili
+  // solo altrove, es. CSV): non vanno toccati, quindi non compaiono qui —
+  // updateLezione fa un merge parziale e li lascia intatti automaticamente
   const attrs = {
     data, ora: val('lz-ora'), classe: val('lz-classe'), materia: val('lz-materia'), argomento: val('lz-argomento'),
-    compiti: val('lz-compiti'), scadenza, note: val('lz-note'), tipo: val('lz-tipo'),
+    compiti: val('lz-compiti'), scadenza,
   };
   const newAnno = annoFromData(data);
   try {
     if (lezioneCtx) {
       if (newAnno !== lezioneCtx.anno) {
-        // la data è cambiata di anno scolastico: la lezione si sposta di pacchetto
+        // la data è cambiata di anno scolastico: la lezione si sposta di
+        // pacchetto (DB.addLezione crea un record nuovo, non un merge: note/
+        // tipo vanno riportati esplicitamente per non perderli)
+        const existing = DB.getLezioni(lezioneCtx.anno).find(l => l.id === lezioneCtx.id);
         await DB.removeLezione(lezioneCtx.anno, lezioneCtx.id);
-        await DB.addLezione(newAnno, attrs);
+        await DB.addLezione(newAnno, { ...attrs, note: existing?.note || '', tipo: existing?.tipo || '' });
       } else {
         await DB.updateLezione(lezioneCtx.anno, lezioneCtx.id, attrs);
       }
