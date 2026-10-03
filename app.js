@@ -6201,6 +6201,46 @@ function giorniAttivi(anno) {
   return orarioConfigForDate(anno, todayISO())?.sabato === false ? GIORNI_ORARIO.slice(0, 5) : GIORNI_ORARIO;
 }
 
+// Confini di un anno scolastico (1° settembre – 31 agosto), usati come
+// periodo di validità di un orario quando dataInizio/dataFine non sono
+// specificate ("vale tutto l'anno")
+function annoDateBounds(anno) {
+  const m = String(anno).match(/^(\d{4})\/(\d{2})$/);
+  if (!m) return { start: '', end: '' };
+  const y = +m[1];
+  return { start: `${y}-09-01`, end: `${y + 1}-08-31` };
+}
+// Genera le Lezioni mancanti per una cella d'orario (giorno/ora/classe/
+// materia), in tutte le date del periodo di validità dell'orario (o
+// dell'intero anno scolastico se non specificato) che cadono in quel
+// giorno — mai sovrascrive/duplica: salta le date dove per quella classe+ora
+// esiste già una lezione, e non tocca/rimuove mai lezioni esistenti
+async function generateLezioniForSlot(anno, config, slot) {
+  if (!slot.materia && !slot.classe) return 0;
+  const bounds = annoDateBounds(anno);
+  const da = config.dataInizio || bounds.start;
+  const a = config.dataFine || bounds.end;
+  if (!da || !a) return 0;
+  const dates = datesInRangeForGiorno(da, a, slot.giorno);
+  const perAnno = {};
+  dates.forEach(iso => {
+    const dAnno = annoFromData(iso);
+    const exists = DB.getLezioni(dAnno).some(l => l.data === iso && l.classe === slot.classe && (+l.ora || 0) === slot.ora);
+    if (exists) return;
+    (perAnno[dAnno] ||= []).push({ data: iso, ora: slot.ora, classe: slot.classe, materia: slot.materia });
+  });
+  let count = 0;
+  for (const [dAnno, arr] of Object.entries(perAnno)) {
+    for (const l of arr) { await DB.addLezione(dAnno, l); count++; }
+  }
+  return count;
+}
+async function generateLezioniForConfig(anno, config) {
+  let total = 0;
+  for (const slot of config.slots) total += await generateLezioniForSlot(anno, config, slot);
+  return total;
+}
+
 // Più orario possono coesistere per lo stesso anno (titolo + validità da/a):
 // una select in alto sceglie quale mostrare/modificare in griglia
 function renderOrario() {
@@ -6306,16 +6346,25 @@ document.getElementById('orario-config-save').addEventListener('click', async ()
   if (!titolo) { alert('Il titolo è obbligatorio.'); return; }
   const dataInizio = document.getElementById('oc-data-da').value;
   const dataFine = document.getElementById('oc-data-a').value;
+  let config;
   try {
     if (id) {
       await DB.updateOrarioConfigMeta(anno, id, { titolo, dataInizio, dataFine });
+      config = DB.getOrarioConfig(anno, id);
     } else {
-      const created = await DB.addOrarioConfig(anno, { titolo, dataInizio, dataFine });
-      state.orarioConfigId = created.id;
+      config = await DB.addOrarioConfig(anno, { titolo, dataInizio, dataFine });
+      state.orarioConfigId = config.id;
     }
     closeOrarioConfigModal();
-    renderOrario();
-  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+    renderAll();
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); return; }
+  // La validità può essere stata estesa: rigenera (senza duplicare) le
+  // lezioni per le celle già compilate nel nuovo periodo — un eventuale
+  // errore qui non deve nascondere il salvataggio (già avvenuto) sopra
+  try {
+    const count = await generateLezioniForConfig(anno, config);
+    if (count) { renderAll(); alert(`Aggiunte ${count} lezioni nel periodo di validità dell'orario.`); }
+  } catch (err) { alert("Orario salvato, ma errore nella generazione delle lezioni: " + err.message); }
 });
 
 let orarioSlotCtx = null; // { type: 'cell', anno, configId, giorno, ora } | { type: 'periodo', anno, configId, ora }
@@ -6364,8 +6413,9 @@ document.getElementById('orario-slot-close').addEventListener('click', closeOrar
 document.getElementById('orario-slot-cancel').addEventListener('click', closeOrarioSlot);
 document.getElementById('orario-slot-save').addEventListener('click', async () => {
   if (!orarioSlotCtx) return;
+  const { anno, configId } = orarioSlotCtx;
+  let newSlot = null;
   try {
-    const { anno, configId } = orarioSlotCtx;
     if (orarioSlotCtx.type === 'periodo') {
       const { ora } = orarioSlotCtx;
       const inizio = document.getElementById('os-inizio').value;
@@ -6376,12 +6426,21 @@ document.getElementById('orario-slot-save').addEventListener('click', async () =
       const materia = document.getElementById('os-materia').value.trim();
       const classe = document.getElementById('os-classe').value.trim();
       const slots = DB.getOrarioConfig(anno, configId).slots.filter(sl => !(sl.giorno === giorno && sl.ora === ora));
-      if (materia || classe) slots.push({ id: DB.uid(), giorno, ora, materia, classe });
+      if (materia || classe) { newSlot = { id: DB.uid(), giorno, ora, materia, classe }; slots.push(newSlot); }
       await DB.setOrarioConfigSlots(anno, configId, slots);
     }
     closeOrarioSlot();
     renderOrario();
-  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+  } catch (err) { alert('Errore durante il salvataggio: ' + err.message); return; }
+  // La cella appena compilata genera (senza duplicare) le lezioni per tutte
+  // le sue occorrenze nel periodo di validità dell'orario — un eventuale
+  // errore qui non deve nascondere il salvataggio (già avvenuto) sopra
+  if (newSlot) {
+    try {
+      const count = await generateLezioniForSlot(anno, DB.getOrarioConfig(anno, configId), newSlot);
+      if (count) { renderAll(); alert(`Aggiunte ${count} lezioni nel periodo di validità dell'orario.`); }
+    } catch (err) { alert("Cella salvata, ma errore nella generazione delle lezioni: " + err.message); }
+  }
 });
 document.getElementById('orario-slot-delete').addEventListener('click', async () => {
   if (!orarioSlotCtx) return;
