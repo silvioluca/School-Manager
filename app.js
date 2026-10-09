@@ -4923,6 +4923,10 @@ function renderLezioniElenco(rows) {
   const visibleKeys = new Set(rows.map(({ anno, l }) => anno + '|' + l.id));
   [...state.lezioniSelected].forEach(k => { if (!visibleKeys.has(k)) state.lezioniSelected.delete(k); });
   updateLezioniBulkBar();
+  const selAllBtn = document.getElementById('btn-lezioni-select-all');
+  const allSel = rows.length > 0 && rows.every(({ anno, l }) => state.lezioniSelected.has(anno + '|' + l.id));
+  selAllBtn.classList.toggle('active', allSel);
+  selAllBtn.title = allSel ? 'Deseleziona tutto' : 'Seleziona tutto';
 
   if (!rows.length) {
     wrap.innerHTML = ''; panel.classList.add('hidden');
@@ -5003,6 +5007,9 @@ function renderLezioniElenco(rows) {
     else state.lezioniSelected.add(key);
     row.classList.toggle('selected');
     updateLezioniBulkBar();
+    const stillAll = rows.length > 0 && rows.every(({ anno, l }) => state.lezioniSelected.has(anno + '|' + l.id));
+    selAllBtn.classList.toggle('active', stillAll);
+    selAllBtn.title = stillAll ? 'Deseleziona tutto' : 'Seleziona tutto';
   }));
   wireSort(activeContainer, 'lezioni', renderLezioni);
 }
@@ -5766,6 +5773,13 @@ document.getElementById('lez-csv-file').addEventListener('change', async e => {
 });
 
 // ── Azioni di gruppo sulle lezioni (tabella elenco) ──────────────────
+document.getElementById('btn-lezioni-select-all').addEventListener('click', () => {
+  const keys = lezioniRowsSorted().map(({ anno, l }) => anno + '|' + l.id);
+  const allSel = keys.length > 0 && keys.every(k => state.lezioniSelected.has(k));
+  if (allSel) keys.forEach(k => state.lezioniSelected.delete(k));
+  else keys.forEach(k => state.lezioniSelected.add(k));
+  renderLezioni();
+});
 document.getElementById('btn-lezioni-duplica-bulk').addEventListener('click', async () => {
   const keys = [...state.lezioniSelected].map(k => k.split('|'));
   if (!keys.length) return;
