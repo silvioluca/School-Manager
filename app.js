@@ -3015,6 +3015,58 @@ function renderVVGrigliaTable(stu) {
   }));
 }
 
+// Alunni della griglia attualmente in modifica (stessa logica di
+// renderVVGrid: solo con Anno/Classe specifici nei filtri in alto)
+function vvStudentiCorrenti() {
+  const target = classeDetailTarget();
+  if (target.mode !== 'single') return null;
+  const { anno, classe } = target;
+  const stu = state.students.filter(s => s.anni?.[anno]?.classe === classe)
+    .sort((a, b) => `${a.cognome} ${a.nome}`.localeCompare(`${b.cognome} ${b.nome}`));
+  return { anno, classe, stu };
+}
+function vvCsvFilename(base, classe) {
+  const titolo = document.getElementById('vv-titolo').value.trim() || base;
+  return `${titolo}-${classe}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.csv';
+}
+// Scarica il draft "Punteggi esercizi": una colonna per esercizio (stessa
+// struttura della tabella a video), oltre ad Alunno/Data/Voto
+document.getElementById('btn-vv-punteggi-csv').addEventListener('click', () => {
+  const ctx = vvStudentiCorrenti();
+  if (!ctx || !ctx.stu.length || !vvState.esercizi.length) return;
+  const esHeaders = vvState.esercizi.map((_, i) => `Es. ${i + 1} %`);
+  const righe = [['Alunno', 'Data', ...esHeaders, 'Voto'].join(';')];
+  ctx.stu.forEach(s => {
+    const pcts = vvState.percentuali[s.id] || {};
+    const voto = vvVotoPercentuali(s);
+    righe.push([
+      `${s.cognome} ${s.nome}`, fmtData(vvDataOf(s)),
+      ...vvState.esercizi.map(e => pcts[e.id] ?? ''),
+      voto != null ? fmt(voto) : '',
+    ].join(';'));
+  });
+  downloadBlob('﻿' + righe.join('\r\n'), vvCsvFilename('punteggi-esercizi', ctx.classe), 'text/csv;charset=utf-8');
+});
+// Scarica il draft "Griglia di valutazione": tante colonne quante sono gli
+// input di ciascuna cella (A, B, C) più una colonna Totale per esercizio
+// (lo stesso totale mostrato sotto gli input A/B/C nella tabella a video)
+document.getElementById('btn-vv-griglia-csv').addEventListener('click', () => {
+  const ctx = vvStudentiCorrenti();
+  if (!ctx || !ctx.stu.length || !vvState.esercizi.length) return;
+  const esHeaders = vvState.esercizi.flatMap((_, i) => [`Es. ${i + 1} A`, `Es. ${i + 1} B`, `Es. ${i + 1} C`, `Es. ${i + 1} Totale`]);
+  const righe = [['Alunno', ...esHeaders, 'Voto'].join(';')];
+  ctx.stu.forEach(s => {
+    const voto = vvVotoGriglia(s);
+    const cols = vvState.esercizi.flatMap(e => {
+      const g = vvState.griglia[s.id]?.[e.id] || {};
+      const somma = vvSommaGrigliaEs(s, e.id);
+      return [g.a ?? '', g.b ?? '', g.c ?? '', somma != null ? fmt(vvSommaEsPunti(somma, e.max)) : ''];
+    });
+    righe.push([`${s.cognome} ${s.nome}`, ...cols, voto != null ? fmt(voto) : ''].join(';'));
+  });
+  downloadBlob('﻿' + righe.join('\r\n'), vvCsvFilename('griglia-valutazione', ctx.classe), 'text/csv;charset=utf-8');
+});
+
 document.getElementById('vv-converti').addEventListener('click', () => {
   const target = classeDetailTarget();
   if (target.mode !== 'single') return;
