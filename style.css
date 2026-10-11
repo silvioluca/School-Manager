@@ -383,6 +383,20 @@ header {
 .cd-grid-filters { display: flex; gap: 8px; }
 .cd-grid-filters .filter-select { padding: 6px 10px; font-size: 12px; }
 
+/* ── Progettazione: tutte le classi affiancate in colonne (Progetti/
+   Educazione civica/CLIL), per un colpo d'occhio d'insieme invece che una
+   classe alla volta come Coordinamento ───────────────────────────────── */
+.prog-board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.prog-col {
+  flex: 0 0 240px; display: flex; flex-direction: column; gap: 10px;
+  background: var(--bg2); border: 1px solid var(--border-idle); border-radius: 8px; padding: 14px;
+}
+.prog-col-head {
+  font-size: 13.5px; font-weight: 700; color: var(--cls-color, var(--text-primary));
+  padding-bottom: 8px; border-bottom: 2px solid var(--cls-color, var(--border-idle));
+}
+.prog-field { min-height: 72px; }
+
 /* ── Coordinamento: elenco di tabelle a fisarmonica (una per classe può non
    bastare — es. "Materiale", "Assicurazione", "Uscite didattiche"…), ognuna
    con colonne definite dall'utente ed editabile in loco, compatta ──────── */

@@ -62,12 +62,12 @@ const state = {
 };
 
 const charts = {};       // istanze Chart.js per distruzione/ricreazione
-const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'uscite', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'coordinamento', 'item-note'];
+const ALL_VIEWS = ['dashboard', 'alunni', 'bes', 'classi', 'voti', 'verifiche', 'rubriche', 'bonusmalus', 'lezioni', 'compiti', 'todo', 'orario', 'colloqui', 'appuntamenti', 'uscite', 'calendario', 'report', 'report-ore', 'report-os', 'materiale', 'alunno-detail', 'classe-detail', 'coordinamento', 'progettazione', 'item-note'];
 const VIEW_TITLES = {
   dashboard: 'Dashboard', alunni: 'Alunni', classi: 'Classi', voti: 'Voti', lezioni: 'Lezioni', compiti: 'Compiti', orario: 'Orario', report: 'Report Voti',
   'alunno-detail': 'Scheda alunno', 'classe-detail': 'Scheda classe', verifiche: 'Verifiche', rubriche: 'Rubriche valutative', bonusmalus: 'Bonus/Malus',
   bes: 'BES', colloqui: 'Colloqui', appuntamenti: 'Appuntamenti', uscite: 'Uscite didattiche', calendario: 'Calendario', todo: 'To-do', 'item-note': 'Nota', 'report-ore': 'Report ore',
-  'report-os': 'Report Orali/Scritti', materiale: 'Materiale', coordinamento: 'Coordinamento',
+  'report-os': 'Report Orali/Scritti', materiale: 'Materiale', coordinamento: 'Coordinamento', progettazione: 'Progettazione',
 };
 // Tipi di appuntamento istituzionale (collegi/consigli/incontri, anche pomeridiani o online)
 const TIPI_APPUNTAMENTO = {
@@ -794,7 +794,7 @@ function renderView() {
     state.view === 'dashboard' || state.view === 'report' || state.view === 'alunno-detail' || state.view === 'classe-detail'
     || state.view === 'orario' || state.view === 'lezioni' || state.view === 'compiti' || state.view === 'verifiche' || state.view === 'rubriche'
     || state.view === 'bes' || state.view === 'colloqui' || state.view === 'appuntamenti' || state.view === 'uscite' || state.view === 'calendario' || state.view === 'todo'
-    || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os' || state.view === 'coordinamento');
+    || state.view === 'item-note' || state.view === 'report-ore' || state.view === 'report-os' || state.view === 'coordinamento' || state.view === 'progettazione');
   document.getElementById('dash-toolbar').classList.toggle('hidden', state.view !== 'dashboard');
   document.getElementById('filter-materia').classList.toggle('hidden', state.view !== 'report' && state.view !== 'report-os');
   document.getElementById('filter-alunno-report').classList.toggle('hidden', state.view !== 'report');
@@ -812,7 +812,7 @@ function renderView() {
     bonusmalus: renderBonusMalus,
     bes: renderBes, colloqui: renderColloqui, appuntamenti: renderAppuntamenti, uscite: renderUscite, calendario: renderCalendario, todo: renderTodo,
     'alunno-detail': renderAlunnoDetailPage, 'classe-detail': renderClasseDetailPage, 'item-note': renderItemNote, 'report-ore': renderReportOre,
-    'report-os': renderReportOS, materiale: renderMateriale, coordinamento: renderCoordinamento,
+    'report-os': renderReportOS, materiale: renderMateriale, coordinamento: renderCoordinamento, progettazione: renderProgettazione,
   };
   try {
     renderers[state.view]();
@@ -853,6 +853,17 @@ function fillDashOggi(elId, items, anno, titoloFn, testoFn, emptyText, oraLabelF
   el.innerHTML = items.map(l => dashItemRow(l, titoloFn(l), testoFn(l), oraLabelFn ? oraLabelFn(l) : (l.ora ? `${l.ora}ª` : ''))).join('');
   el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(anno, div.dataset.id)));
 }
+// Una lezione è una "verifica"/"interrogazione" se lo dice il campo tipo
+// (dati storici, da prima che il selettore venisse tolto dal modale) oppure
+// se lo nomina l'argomento (es. "Verifica di matematica", "Interrogazione
+// su…") — niente più da compilare a parte, basta scriverlo nell'argomento
+function lezioneTipoEffettivo(l) {
+  if (l.tipo === 'verifica' || l.tipo === 'interrogazione') return l.tipo;
+  const arg = (l.argomento || '').toLowerCase();
+  if (/verifica/.test(arg)) return 'verifica';
+  if (/interrogazion/.test(arg)) return 'interrogazione';
+  return '';
+}
 // Avviso proattivo: lezioni segnate come Verifica/Interrogazione da oggi in
 // avanti (non solo "oggi" come gli altri pannelli, altrimenti sarebbe utile
 // solo il giorno stesso, quando è ormai tardi per prepararsi)
@@ -861,7 +872,7 @@ function fillDashVerificheArrivo(elId, items, anno, emptyText) {
   if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">${emptyText}</p>`; return; }
   const oggi = todayISO();
   el.innerHTML = items.map(l => dashItemRow(l,
-    `${l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}${l.argomento ? ' · ' + l.argomento : ''}`,
+    `${lezioneTipoEffettivo(l) === 'verifica' ? 'Verifica' : 'Interrogazione'}${l.argomento ? ' · ' + l.argomento : ''}`,
     '',
     l.data === oggi ? 'Oggi' : fmtData(l.data))).join('');
   el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(anno, div.dataset.id)));
@@ -879,7 +890,7 @@ function renderDashboardOggi() {
   // pannello a sé, mostrando la data originale della lezione al posto del
   // periodo (vedi oraLabelFn in fillDashOggi)
   const scadenzaOggi = lez.filter(l => l.compiti && l.scadenza === oggi);
-  const verificheArrivo = lez.filter(l => l.tipo && l.data >= oggi)
+  const verificheArrivo = lez.filter(l => lezioneTipoEffettivo(l) && l.data >= oggi)
     .sort((a, b) => a.data === b.data ? (+a.ora || 0) - (+b.ora || 0) : a.data.localeCompare(b.data))
     .slice(0, 20);
 
@@ -1826,13 +1837,13 @@ function renderClasseCharts(target = classeDetailTarget(), rows, grades) {
   });
 }
 
-// Lezioni segnate come Verifica/Interrogazione (l.tipo, vedi dashboard) nello
+// Lezioni di tipo Verifica/Interrogazione (vedi lezioneTipoEffettivo) nello
 // stesso ambito Anno/Classe della Scheda classe — non un'entità a sé, sono
 // lezioni: il click apre la lezione stessa, come nei pannelli dashboard.
 function classeDetailVerifiche(target, stu) {
   if (target.mode === 'ambiguous') return [];
   if (target.mode === 'single') {
-    return DB.getLezioni(target.anno).filter(l => l.tipo && l.classe === target.classe).map(l => ({ ...l, anno: target.anno }));
+    return DB.getLezioni(target.anno).filter(l => lezioneTipoEffettivo(l) && l.classe === target.classe).map(l => ({ ...l, anno: target.anno }));
   }
   const pairs = new Set();
   stu.forEach(s => Object.entries(s.anni || {}).forEach(([anno, v]) => {
@@ -1844,7 +1855,7 @@ function classeDetailVerifiche(target, stu) {
   const out = [];
   pairs.forEach(key => {
     const [anno, classe] = key.split('|');
-    out.push(...DB.getLezioni(anno).filter(l => l.tipo && l.classe === classe).map(l => ({ ...l, anno })));
+    out.push(...DB.getLezioni(anno).filter(l => lezioneTipoEffettivo(l) && l.classe === classe).map(l => ({ ...l, anno })));
   });
   return out;
 }
@@ -1856,14 +1867,17 @@ function renderClasseVerifiche(target, stu, elId = 'cd-verifiche-list') {
   if (!items.length) { el.innerHTML = `<p class="stat-sub" style="padding:4px 0 8px">Nessuna verifica o interrogazione registrata.</p>`; return; }
   // A sinistra data - titolo, a destra la chip tipologia (stessa struttura
   // .dash-item-top del pannello dashboard "Prossimi appuntamenti e colloqui")
-  el.innerHTML = items.map(l => `
+  el.innerHTML = items.map(l => {
+    const tipo = lezioneTipoEffettivo(l);
+    return `
     <div class="dash-item" data-anno="${escHtml(l.anno)}" data-id="${l.id}">
       <div class="dash-item-top">
         <span class="dash-item-ora">${escHtml(fmtData(l.data))}</span>
-        <span class="dash-item-titolo">${escHtml(l.argomento || (l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'))}</span>
-        <span class="mat-chip" style="--mat-color:${l.tipo === 'verifica' ? 'var(--accent-blue)' : 'var(--accent-amber)'}">${l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}</span>
+        <span class="dash-item-titolo">${escHtml(l.argomento || (tipo === 'verifica' ? 'Verifica' : 'Interrogazione'))}</span>
+        <span class="mat-chip" style="--mat-color:${tipo === 'verifica' ? 'var(--accent-blue)' : 'var(--accent-amber)'}">${tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}</span>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   el.querySelectorAll('.dash-item').forEach(div => div.addEventListener('click', () => openLezione(div.dataset.anno, div.dataset.id)));
 }
 
@@ -2096,6 +2110,42 @@ document.getElementById('coord-add-table-btn').addEventListener('click', async (
   const newInput = document.querySelector(`.coord-table-name[data-table-id="${id}"]`);
   if (newInput) { newInput.focus(); newInput.select(); }
 });
+
+// ── Progettazione: Progetti/Educazione civica/CLIL di tutte le classi
+// (dell'anno in filtro) affiancate in colonne, per un colpo d'occhio
+// d'insieme — testo libero, salvataggio automatico al blur di ogni campo
+const PROG_FIELDS = [
+  { key: 'progetti', label: 'Progetti' },
+  { key: 'educazioneCivica', label: 'Educazione civica' },
+  { key: 'clil', label: 'CLIL' },
+];
+function renderProgettazione() {
+  const anno = state.year !== 'all' ? state.year : DB.currentAnno();
+  const classi = allClasses(state.students, anno, state.istituto);
+  document.getElementById('progettazione-info').textContent =
+    `Anno ${anno}${state.year === 'all' ? ' (imposta il filtro Anno in alto per cambiarlo)' : ''}`;
+  document.getElementById('progettazione-empty').classList.toggle('hidden', !!classi.length);
+  const board = document.getElementById('progettazione-board');
+  if (!classi.length) { board.innerHTML = ''; return; }
+  board.innerHTML = classi.map(classe => {
+    const data = DB.getProgettazione(anno, classe);
+    return `
+    <div class="prog-col">
+      <div class="prog-col-head" style="--cls-color:${colorOfClasse(classe)}">${escHtml(classe)}</div>
+      ${PROG_FIELDS.map(f => `
+        <label class="vf-label">${f.label}
+          <textarea class="vf-input prog-field" data-classe="${escHtml(classe)}" data-field="${f.key}" placeholder="—">${escHtml(data[f.key] || '')}</textarea>
+        </label>`).join('')}
+    </div>`;
+  }).join('');
+  board.querySelectorAll('.prog-field').forEach(ta => ta.addEventListener('change', async () => {
+    const classe = ta.dataset.classe;
+    const current = DB.getProgettazione(anno, classe);
+    const updated = { ...current, [ta.dataset.field]: ta.value.trim() };
+    try { await DB.saveProgettazione(anno, classe, updated); }
+    catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
+  }));
+}
 
 // ── Promozione classe (singola e di gruppo) ──────────────────────────
 const promoOverlay = document.getElementById('promo-overlay');
@@ -2502,7 +2552,9 @@ function loadVerificaIntoVV(group) {
   buildFilterBar();
 }
 
+let verificaAnalisiGroup = null; // verifica attualmente mostrata in "Analisi", per il pulsante "Scarica CSV"
 function renderVerificaAnalisi(group) {
+  verificaAnalisiGroup = group;
   const rows = group.rows;
   const voti = rows.map(r => r.g.voto);
 
@@ -2561,6 +2613,30 @@ function renderVerificaAnalisi(group) {
     options: { ...base, scales: { ...base.scales, y: { ...base.scales.y, suggestedMin: 0, suggestedMax: 10 } } },
   });
 }
+// Esporta la tabella dei voti della verifica mostrata in "Analisi": una riga
+// per alunno coi dati già salvati (stesse colonne del CSV di Report Voti),
+// più una colonna "Es. N %" per ciascun esercizio se la verifica è stata
+// compilata con i punteggi percentuali (vedi vvState/verificaPercentuali)
+document.getElementById('btn-verifica-csv').addEventListener('click', () => {
+  const group = verificaAnalisiGroup;
+  if (!group || !group.rows.length) return;
+  const nEsercizi = Math.max(0, ...group.rows.map(r => r.g.verificaEsercizi?.length || 0));
+  const esHeaders = [...Array(nEsercizi)].map((_, i) => `Es. ${i + 1} %`);
+  const righe = [['Data', 'Alunno', 'Classe', 'Materia', 'Voto', 'Tipo', 'Descrizione', 'Commento', ...esHeaders].join(';')];
+  const rowsSorted = [...group.rows].sort((a, b) => `${a.s.cognome} ${a.s.nome}`.localeCompare(`${b.s.cognome} ${b.s.nome}`));
+  rowsSorted.forEach(({ s, g }) => {
+    const pcts = [...Array(nEsercizi)].map((_, i) => {
+      const v = g.verificaPercentuali?.[i];
+      return v === '' || v == null ? '' : String(v).replace('.', ',');
+    });
+    righe.push([
+      fmtData(g.data), `${s.cognome} ${s.nome}`, classeOf(s, g.anno) || '', g.materia,
+      String(g.voto).replace('.', ','), g.tipo, g.desc || '', g.commento || '', ...pcts,
+    ].join(';'));
+  });
+  const nomeFile = `${group.desc}-${group.data}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  downloadBlob('﻿' + righe.join('\r\n'), `${nomeFile}.csv`, 'text/csv;charset=utf-8');
+});
 
 // ── Valutazione verifica: voto esercizio per esercizio ───────────────
 // Griglia "usa e getta" (non salvata come modello): la struttura esercizi
@@ -5090,7 +5166,7 @@ function renderLezioniSettimana() {
               <div class="lez-card" data-anno="${escHtml(a)}" data-id="${l.id}" style="--cls-color:${colorOfClasse(l.classe)}">
                 <div class="lc-top">
                   <span class="lc-classe">${escHtml(l.classe || 'Lezione')}</span>
-                  ${l.tipo ? `<span class="tipo-badge">${l.tipo === 'verifica' ? 'Verifica' : 'Interrogazione'}</span>` : ''}
+                  ${lezioneTipoEffettivo(l) ? `<span class="tipo-badge">${lezioneTipoEffettivo(l) === 'verifica' ? 'Verifica' : 'Interrogazione'}</span>` : ''}
                 </div>
                 ${l.materia ? `<div class="lc-materia-txt">${escHtml(l.materia)}</div>` : ''}
                 ${l.argomento ? `<div class="lc-arg">${escHtml(l.argomento)}</div>` : ''}

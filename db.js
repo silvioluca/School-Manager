@@ -92,6 +92,9 @@ const DB = (() => {
   // testo/numero), una riga per alunno della classe (il roster non si
   // duplica qui, si legge sempre da s.anni[anno].classe).
   let _coordinamento = {};
+  // "anno|classe" → { progetti, educazioneCivica, clil } (testo libero) —
+  // vedi sezione Progettazione
+  let _progettazione = {};
   let _orario = {};     // anno → [ {id, giorno, ora, materia, classe}, … ] — orario settimanale del docente
   let _lezioni = {};    // anno → [ {id, data, ora, classe, materia, argomento, note}, … ] — registro lezioni
   let _rubriche = [];   // [ {id, nome, indicatori: [...]}, … ] — libreria griglie di valutazione
@@ -176,6 +179,7 @@ const DB = (() => {
       _loaded = p.loaded || {};
       _classiMeta = p.classiMeta || {};
       _coordinamento = p.coordinamento || {};
+      _progettazione = p.progettazione || {};
       _orario = p.orario || {};
       _lezioni = p.lezioni || {};
       _rubriche = p.rubriche || [];
@@ -188,7 +192,7 @@ const DB = (() => {
     } catch { return false; }
   }
   function _cacheSave() {
-    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, coordinamento: _coordinamento, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos, materialeUser: _materialeUser })); } catch {}
+    try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ students: _cache, loaded: _loaded, classiMeta: _classiMeta, coordinamento: _coordinamento, progettazione: _progettazione, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos, materialeUser: _materialeUser })); } catch {}
   }
   function _cacheDrop() {
     try { sessionStorage.removeItem(CACHE_KEY); } catch {}
@@ -319,6 +323,9 @@ const DB = (() => {
     const coordDoc = snap.docs.find(d => d.id === 'coordinamento');
     _coordinamento = coordDoc ? JSON.parse(coordDoc.data().json) : {};
 
+    const progDoc = snap.docs.find(d => d.id === 'progettazione');
+    _progettazione = progDoc ? JSON.parse(progDoc.data().json) : {};
+
     const orarioDoc = snap.docs.find(d => d.id === 'orario');
     _orario = orarioDoc ? JSON.parse(orarioDoc.data().json) : {};
 
@@ -402,6 +409,22 @@ const DB = (() => {
     if (hasContent) _coordinamento[key] = { tables: data.tables };
     else delete _coordinamento[key];
     await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
+    _cacheDrop();
+  }
+
+  // ── Progettazione: Progetti / Educazione civica / CLIL per classe,
+  // vista a colonne (una classe per colonna) per un colpo d'occhio su tutte
+  // insieme — testo libero, non strutturato come Coordinamento
+  function getProgettazione(anno, classe) {
+    return _progettazione[classeMetaKey(anno, classe)] || { progetti: '', educazioneCivica: '', clil: '' };
+  }
+  async function saveProgettazione(anno, classe, data) {
+    if (!_cache) await all();
+    const key = classeMetaKey(anno, classe);
+    const progetti = data.progetti || '', educazioneCivica = data.educazioneCivica || '', clil = data.clil || '';
+    if (progetti || educazioneCivica || clil) _progettazione[key] = { progetti, educazioneCivica, clil };
+    else delete _progettazione[key];
+    await packs().doc('progettazione').set({ json: JSON.stringify(_progettazione) });
     _cacheDrop();
   }
 
@@ -814,6 +837,11 @@ const DB = (() => {
       await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
       _cacheDrop();
     }
+    if (_progettazione[key]) {
+      delete _progettazione[key];
+      await packs().doc('progettazione').set({ json: JSON.stringify(_progettazione) });
+      _cacheDrop();
+    }
     return affected.length;
   }
 
@@ -955,7 +983,7 @@ const DB = (() => {
     return JSON.stringify({
       app: APP, exportedAt: new Date().toISOString(),
       students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos,
-      materialeUser: _materialeUser, coordinamento: _coordinamento,
+      materialeUser: _materialeUser, coordinamento: _coordinamento, progettazione: _progettazione,
     }, null, 2);
   }
 
@@ -1017,6 +1045,10 @@ const DB = (() => {
       _coordinamento = parsed.coordinamento;
       await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
     }
+    if (!Array.isArray(parsed) && parsed.progettazione) {
+      _progettazione = parsed.progettazione;
+      await packs().doc('progettazione').set({ json: JSON.stringify(_progettazione) });
+    }
     _cacheDrop();
     return list.length;
   }
@@ -1027,6 +1059,7 @@ const DB = (() => {
     currentAnno, classeCorrente,
     getClasseMeta, materieOf, indirizzoOf, istitutoOf, materieMapAll, allIstituti, setClasseMeta,
     getCoordinamento, saveCoordinamento,
+    getProgettazione, saveProgettazione,
     deleteClasse, promuoviClasse,
     getOrarioConfigs, getOrarioConfig, addOrarioConfig, updateOrarioConfigMeta, removeOrarioConfig,
     setOrarioConfigSlots, setOrarioConfigPeriodo, setOrarioConfigSabato,
