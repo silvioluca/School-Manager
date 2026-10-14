@@ -395,7 +395,9 @@ const DB = (() => {
   // ── Coordinamento: una o più tabelle libere per classe (nome + colonne
   // definite dall'utente, una riga per alunno) ─────────────────────────
   function getCoordinamento(anno, classe) {
-    const raw = _coordinamento[classeMetaKey(anno, classe)];
+    return _coordFromRaw(_coordinamento[classeMetaKey(anno, classe)]);
+  }
+  function _coordFromRaw(raw) {
     if (!raw) return { tables: [] };
     if (raw.tables) return raw;
     // Retrocompatibilità: il formato precedente aveva un'unica tabella
@@ -451,8 +453,8 @@ const DB = (() => {
   // periodi è per "ora" (vale per tutti i giorni di quell'orario): la fascia
   // oraria di una riga non cambia da un giorno all'altro, si imposta una
   // volta sola. sabato: false nasconde la colonna del sabato per quell'orario.
-  function _normalizeOrario(anno) {
-    const v = _orario[anno];
+  function _normalizeOrario(anno) { return _orarioFromRaw(_orario[anno]); }
+  function _orarioFromRaw(v) {
     if (!v) return { configs: [] };
     if (Array.isArray(v)) // retrocompat: schema iniziale, un array di slot nudo
       return { configs: [{ id: 'legacy', titolo: 'Orario', dataInizio: '', dataFine: '', slots: v, periodi: {}, sabato: true }] };
@@ -984,13 +986,96 @@ const DB = (() => {
       app: APP, exportedAt: new Date().toISOString(),
       students: data, orario: _orario, lezioni: _lezioni, rubriche: _rubriche, colloqui: _colloqui, appuntamenti: _appuntamenti, uscite: _uscite, todos: _todos,
       materialeUser: _materialeUser, coordinamento: _coordinamento, progettazione: _progettazione,
+      classiMeta: _classiMeta,
     }, null, 2);
   }
 
-  async function importJSON(json, { replace = false } = {}) {
-    const parsed = typeof json === 'string' ? JSON.parse(json) : json;
-    const list = Array.isArray(parsed) ? parsed : (parsed.students || []);
-    if (replace) { await clear(); _cache = []; _orario = {}; _lezioni = {}; }
+  // ── Import backup ─────────────────────────────────────────────────
+  // "Sostituisci": prima scrive TUTTI i pacchetti del backup (set sovrascrive),
+  // e solo alla fine elimina i documenti rimasti che il backup non contiene.
+  // Così un errore a metà (es. rete) non lascia l'utente senza dati: nel
+  // peggiore dei casi restano in parte i vecchi pacchetti, mai un vuoto.
+  // "Unisci": aggiunge soltanto, non sovrascrive né cancella nulla di ciò che
+  // c'è già (record confrontati per id; campi esistenti vuoti riempiti dal backup).
+
+  function _isEmptyVal(v) {
+    return v == null || v === '' || v === 'ND' || (Array.isArray(v) && !v.length);
+  }
+  // Aggiunge a `target` gli elementi di `incoming` con id non ancora presente.
+  // Ritorna quanti ne ha aggiunti.
+  function _mergeById(target, incoming) {
+    const ids = new Set(target.map(x => x.id));
+    let n = 0;
+    (incoming || []).forEach(x => {
+      if (x.id ? ids.has(x.id) : target.some(t => JSON.stringify(t) === JSON.stringify(x))) return;
+      const item = x.id ? x : { ...x, id: uid() };
+      target.push(item);
+      ids.add(item.id);
+      n++;
+    });
+    return n;
+  }
+  // Riempie i campi vuoti di `cur` con quelli (non vuoti) di `inc`
+  function _fillEmpty(cur, inc, skip = []) {
+    let changed = false;
+    Object.entries(inc || {}).forEach(([k, v]) => {
+      if (skip.includes(k) || _isEmptyVal(v)) return;
+      if (_isEmptyVal(cur[k])) { cur[k] = v; changed = true; }
+    });
+    return changed;
+  }
+  // Unisce un alunno del backup a quello già presente: iscrizioni/voti/
+  // bonus-malus mancanti vengono aggiunti, l'anagrafica esistente resta (salvo
+  // campi vuoti). Ritorna true se qualcosa è cambiato.
+  function _mergeStudent(cur, inc) {
+    const before = JSON.stringify(cur);
+    _fillEmpty(cur, inc, ['id', 'anni', 'bonusMalus', 'besPiano', 'createdAt', 'updatedAt']);
+    if (inc.besPiano) _fillEmpty(cur.besPiano ||= {}, inc.besPiano);
+    _mergeById(cur.bonusMalus ||= [], inc.bonusMalus);
+    // I voti di vecchi backup potrebbero non avere id: confronto sul contenuto
+    const gradeKey = g => g.id || `${g.data}|${g.voto}|${g.tipo}|${g.desc}`;
+    Object.entries(inc.anni || {}).forEach(([anno, v]) => {
+      if (!cur.anni[anno]) { cur.anni[anno] = v; return; }
+      const y = cur.anni[anno];
+      if (!y.classe && v.classe) y.classe = v.classe;
+      y.materie ||= {};
+      Object.entries(v.materie || {}).forEach(([mat, grades]) => {
+        const arr = (y.materie[mat] ||= []);
+        const keys = new Set(arr.map(gradeKey));
+        grades.forEach(g => { if (!keys.has(gradeKey(g))) { arr.push(g); keys.add(gradeKey(g)); } });
+      });
+    });
+    return JSON.stringify(cur) !== before;
+  }
+
+  // Scrive tutti i pacchetti dallo stato in memoria; ritorna gli id scritti
+  async function _writeAllPacks() {
+    const docs = { anagrafica: _cache.map(anagOf) };
+    const anni = new Set();
+    _cache.forEach(s => Object.keys(s.anni).forEach(y => anni.add(y)));
+    anni.forEach(anno => {
+      const map = {};
+      _cache.forEach(s => { if (s.anni[anno]) map[s.id] = s.anni[anno]; });
+      docs[annoDocId(anno)] = map;
+    });
+    const perAnno = (obj, idOf) => Object.entries(obj).forEach(([anno, arr]) => { if (arr && arr.length) docs[idOf(anno)] = arr; });
+    perAnno(_lezioni, lezDocId);
+    perAnno(_colloqui, colDocId);
+    perAnno(_appuntamenti, apptDocId);
+    perAnno(_uscite, uscDocId);
+    Object.assign(docs, {
+      'classi-meta': _classiMeta, coordinamento: _coordinamento, progettazione: _progettazione,
+      orario: _orario, rubriche: _rubriche, todos: _todos, 'materiale-user': _materialeUser,
+    });
+    for (const [id, value] of Object.entries(docs)) {
+      const json = JSON.stringify(value);
+      if (json.length > 900000) console.warn(`Pacchetto ${id} vicino al limite di 1 MB (${json.length} byte)`);
+      await packs().doc(id).set({ json });
+    }
+    return new Set(Object.keys(docs));
+  }
+
+  function _normalizeImported(list) {
     list.forEach(s => {
       if (!s.id) s.id = uid();
       s.anni = s.anni || {};
@@ -1000,57 +1085,125 @@ const DB = (() => {
         delete s.classe;
       }
     });
-    await putMany(list);
-    if (!Array.isArray(parsed) && parsed.orario) {
-      Object.entries(parsed.orario).forEach(([anno, slots]) => { _orario[anno] = slots; });
-      await packs().doc('orario').set({ json: JSON.stringify(_orario) });
+  }
+
+  async function _importReplace(list, b) {
+    const before = await packs().get();
+    list.forEach(_stamp);
+    _cache = list;
+    _orario = b.orario || {};
+    _lezioni = b.lezioni || {};
+    _rubriche = b.rubriche || [];
+    _colloqui = b.colloqui || {};
+    _appuntamenti = b.appuntamenti || {};
+    _uscite = b.uscite || {};
+    _todos = b.todos || [];
+    _materialeUser = b.materialeUser || { added: [], edited: {}, deleted: [] };
+    _coordinamento = b.coordinamento || {};
+    _progettazione = b.progettazione || {};
+    _classiMeta = b.classiMeta || {};
+    const written = await _writeAllPacks();
+    const stale = before.docs.filter(d => !written.has(d.id));
+    for (let i = 0; i < stale.length; i += 450) {
+      const batch = _db().batch();
+      stale.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+      await batch.commit();
     }
-    if (!Array.isArray(parsed) && parsed.lezioni) {
-      for (const [anno, arr] of Object.entries(parsed.lezioni)) {
-        _lezioni[anno] = arr;
-        await _saveLezioni(anno);
+    _loaded = {};
+    list.forEach(_markLoaded);
+    return { nuovi: list.length, aggiornati: 0 };
+  }
+
+  async function _importMerge(list, b) {
+    let nuovi = 0, aggiornati = 0;
+    const changed = [];
+    list.forEach(inc => {
+      const cur = _cache.find(s => s.id === inc.id);
+      if (!cur) { changed.push(inc); nuovi++; }
+      else if (_mergeStudent(cur, inc)) { changed.push(cur); aggiornati++; }
+    });
+    if (changed.length) await putMany(changed);
+
+    const perAnno = async (store, incoming, save) => {
+      for (const [anno, arr] of Object.entries(incoming || {})) {
+        if (_mergeById(store[anno] ||= [], arr)) await save(anno);
+        if (!store[anno].length) delete store[anno];
       }
-    }
-    if (!Array.isArray(parsed) && parsed.rubriche) {
-      _rubriche = parsed.rubriche;
+    };
+    await perAnno(_lezioni, b.lezioni, _saveLezioni);
+    await perAnno(_colloqui, b.colloqui, _saveColloqui);
+    await perAnno(_appuntamenti, b.appuntamenti, _saveAppuntamenti);
+    await perAnno(_uscite, b.uscite, _saveUscite);
+
+    if (_mergeById(_rubriche, b.rubriche))
       await packs().doc('rubriche').set({ json: JSON.stringify(_rubriche) });
-    }
-    if (!Array.isArray(parsed) && parsed.colloqui) {
-      for (const [anno, arr] of Object.entries(parsed.colloqui)) {
-        _colloqui[anno] = arr;
-        await _saveColloqui(anno);
-      }
-    }
-    if (!Array.isArray(parsed) && parsed.appuntamenti) {
-      for (const [anno, arr] of Object.entries(parsed.appuntamenti)) {
-        _appuntamenti[anno] = arr;
-        await _saveAppuntamenti(anno);
-      }
-    }
-    if (!Array.isArray(parsed) && parsed.uscite) {
-      for (const [anno, arr] of Object.entries(parsed.uscite)) {
-        _uscite[anno] = arr;
-        await _saveUscite(anno);
-      }
-    }
-    if (!Array.isArray(parsed) && parsed.todos) {
-      _todos = parsed.todos;
+    if (_mergeById(_todos, b.todos))
       await packs().doc('todos').set({ json: JSON.stringify(_todos) });
+
+    if (b.materialeUser) {
+      // "deleted" del backup NON viene unito: nasconderebbe elementi oggi visibili
+      const mu = _materialeUser;
+      let n = _mergeById(mu.added ||= [], b.materialeUser.added);
+      Object.entries(b.materialeUser.edited || {}).forEach(([id, v]) => {
+        if (!(mu.edited ||= {})[id]) { mu.edited[id] = v; n++; }
+      });
+      if (n) await packs().doc('materiale-user').set({ json: JSON.stringify(mu) });
     }
-    if (!Array.isArray(parsed) && parsed.materialeUser) {
-      _materialeUser = parsed.materialeUser;
-      await packs().doc('materiale-user').set({ json: JSON.stringify(_materialeUser) });
+
+    if (b.orario) {
+      let n = 0;
+      Object.entries(b.orario).forEach(([anno, raw]) => {
+        if (!_orario[anno]) { _orario[anno] = raw; n++; return; }
+        const cur = _normalizeOrario(anno);
+        if (_mergeById(cur.configs, _orarioFromRaw(raw).configs)) { _orario[anno] = cur; n++; }
+      });
+      if (n) await _saveOrario();
     }
-    if (!Array.isArray(parsed) && parsed.coordinamento) {
-      _coordinamento = parsed.coordinamento;
-      await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
+
+    if (b.coordinamento) {
+      let n = 0;
+      Object.entries(b.coordinamento).forEach(([key, raw]) => {
+        if (!_coordinamento[key]) { _coordinamento[key] = raw; n++; return; }
+        const cur = _coordFromRaw(_coordinamento[key]);
+        if (_mergeById(cur.tables, _coordFromRaw(raw).tables)) { _coordinamento[key] = cur; n++; }
+      });
+      if (n) await packs().doc('coordinamento').set({ json: JSON.stringify(_coordinamento) });
     }
-    if (!Array.isArray(parsed) && parsed.progettazione) {
-      _progettazione = parsed.progettazione;
-      await packs().doc('progettazione').set({ json: JSON.stringify(_progettazione) });
+
+    if (b.progettazione) {
+      let n = 0;
+      Object.entries(b.progettazione).forEach(([key, v]) => {
+        if (!_progettazione[key]) { _progettazione[key] = v; n++; }
+        else if (_fillEmpty(_progettazione[key], v)) n++;
+      });
+      if (n) await packs().doc('progettazione').set({ json: JSON.stringify(_progettazione) });
     }
+
+    if (b.classiMeta) {
+      let n = 0;
+      Object.entries(b.classiMeta).forEach(([key, v]) => {
+        const cur = _classiMeta[key];
+        if (!cur) { _classiMeta[key] = v; n++; return; }
+        if (_fillEmpty(cur, v, ['materie'])) n++;
+        const materie = [...new Set([...(cur.materie || []), ...(v.materie || [])])];
+        if (materie.length !== (cur.materie || []).length) { cur.materie = materie; n++; }
+      });
+      if (n) await packs().doc('classi-meta').set({ json: JSON.stringify(_classiMeta) });
+    }
+
+    return { nuovi, aggiornati };
+  }
+
+  // Ritorna il numero di alunni { nuovi, aggiornati }
+  async function importJSON(json, { replace = false } = {}) {
+    const parsed = typeof json === 'string' ? JSON.parse(json) : json;
+    const list = Array.isArray(parsed) ? parsed : (parsed.students || []);
+    const b = Array.isArray(parsed) ? {} : parsed;
+    _normalizeImported(list);
+    if (!_cache) await all();
+    const res = replace ? await _importReplace(list, b) : await _importMerge(list, b);
     _cacheDrop();
-    return list.length;
+    return res;
   }
 
   return {

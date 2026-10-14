@@ -31,7 +31,7 @@ const state = {
   vfSelectedKey: null,     // chiave (Descrizione+Data+Classe+Materia) della verifica scelta in "Verifiche"; null = modalità nuova verifica
   registroMateria: 'all',  // filtro materia nel Registro voti (Scheda classe)
   registroTipo: 'all',     // filtro tipologia nel Registro voti (Scheda classe)
-  lezView: 'elenco',       // 'elenco' | 'settimana' | 'calendario'
+  lezView: 'settimana',       // 'elenco' | 'settimana' | 'calendario'
   besView: 'schede',       // 'schede' | 'elenco'
   rubricheView: 'schede',  // 'schede' | 'elenco'
   todoView: 'kanban',      // 'kanban' | 'elenco'
@@ -351,7 +351,21 @@ function fmtData(iso) {
   const m = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '');
 }
-function escHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function escHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// Collega un salvataggio asincrono a un pulsante ignorando i clic ripetuti
+// finché il precedente non è finito: senza, un doppio clic durante l'attesa
+// di Firestore crea due record (due alunni, due lezioni, due voti…)
+function onSave(id, fn) {
+  const btn = document.getElementById(id);
+  let busy = false;
+  btn.addEventListener('click', async e => {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    try { await fn(e); } finally { busy = false; btn.disabled = false; }
+  });
+}
 
 // Scarica un contenuto testuale/binario come file, senza lasciare l'oggetto Blob in memoria
 function downloadBlob(content, filename, mime) {
@@ -3174,8 +3188,8 @@ async function saveVerifica() {
     renderAll();
   } catch (err) { alert('Errore durante il salvataggio: ' + err.message); }
 }
-document.getElementById('vv-save').addEventListener('click', saveVerifica);
-document.getElementById('vv-save-pratico').addEventListener('click', saveVerifica);
+onSave('vv-save', saveVerifica);
+onSave('vv-save-pratico', saveVerifica);
 
 // ── Rubriche valutative: libreria di griglie di valutazione riusabili ──
 // Ogni indicatore ha un proprio min/max/step: alcuni indicatori (es. A e B
@@ -3614,7 +3628,7 @@ function wireRubricaBodyEvents() {
   }));
 }
 
-document.getElementById('rubrica-save').addEventListener('click', async () => {
+onSave('rubrica-save', async () => {
   const nome = document.getElementById('rub-nome').value.trim();
   if (!nome) { alert('Inserisci un nome per la rubrica.'); return; }
   rubricaDraft.nome = nome;
@@ -3861,7 +3875,7 @@ function openBesModal(s) {
 function closeBesModal() { document.getElementById('bes-overlay').classList.add('hidden'); besEditingId = null; }
 document.getElementById('bes-close').addEventListener('click', closeBesModal);
 document.getElementById('bes-cancel').addEventListener('click', closeBesModal);
-document.getElementById('bes-save').addEventListener('click', async () => {
+onSave('bes-save', async () => {
   const s = state.students.find(x => x.id === besEditingId);
   if (!s) return;
   const profilo = document.getElementById('bes-profilo').value || 'ND';
@@ -4443,7 +4457,7 @@ async function syncColloquioToGCal(anno, id, attrs, prevGcalEventId) {
     if (state.view === 'colloqui' || state.view === 'calendario') renderView();
   }
 }
-document.getElementById('colloquio-save').addEventListener('click', async () => {
+onSave('colloquio-save', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('cl-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
@@ -4657,7 +4671,7 @@ async function syncAppuntamentoToGCal(anno, id, attrs, prevGcalEventId) {
     if (state.view === 'appuntamenti' || state.view === 'calendario') renderView();
   }
 }
-document.getElementById('appuntamento-save').addEventListener('click', async () => {
+onSave('appuntamento-save', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('ap-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
@@ -4844,7 +4858,7 @@ document.getElementById('btn-add-uscita').addEventListener('click', () => {
 function closeUscita() { document.getElementById('uscita-overlay').classList.add('hidden'); uscitaCtx = null; }
 document.getElementById('uscita-close').addEventListener('click', closeUscita);
 document.getElementById('uscita-cancel').addEventListener('click', closeUscita);
-document.getElementById('uscita-save').addEventListener('click', async () => {
+onSave('uscita-save', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('us-data');
   const titolo = val('us-titolo');
@@ -4925,7 +4939,7 @@ function renderItemNote() {
   wireRichToolbar('note');
   setRichValue('note', rec.note);
 }
-document.getElementById('note-save').addEventListener('click', async () => {
+onSave('note-save', async () => {
   const ctx = state.noteCtx;
   if (!ctx) return;
   const note = getRichValue('note');
@@ -5386,11 +5400,11 @@ document.getElementById('lez-week-today').addEventListener('click', () => {
   renderLezioniSettimana();
 });
 document.getElementById('lez-month-prev').addEventListener('click', () => {
-  const d = new Date((state.lezRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() - 1);
+  const d = new Date((state.lezRefDate || todayISO()) + 'T00:00:00'); d.setDate(1); d.setMonth(d.getMonth() - 1);
   state.lezRefDate = toISO(d); renderLezioniCalendario();
 });
 document.getElementById('lez-month-next').addEventListener('click', () => {
-  const d = new Date((state.lezRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() + 1);
+  const d = new Date((state.lezRefDate || todayISO()) + 'T00:00:00'); d.setDate(1); d.setMonth(d.getMonth() + 1);
   state.lezRefDate = toISO(d); renderLezioniCalendario();
 });
 document.getElementById('lez-month-today').addEventListener('click', () => {
@@ -5567,11 +5581,11 @@ document.getElementById('cal-week-today').addEventListener('click', () => {
   renderCalSettimana();
 });
 document.getElementById('cal-month-prev').addEventListener('click', () => {
-  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() - 1);
+  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setDate(1); d.setMonth(d.getMonth() - 1);
   state.calRefDate = toISO(d); renderCalMese();
 });
 document.getElementById('cal-month-next').addEventListener('click', () => {
-  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setMonth(d.getMonth() + 1);
+  const d = new Date((state.calRefDate || todayISO()) + 'T00:00:00'); d.setDate(1); d.setMonth(d.getMonth() + 1);
   state.calRefDate = toISO(d); renderCalMese();
 });
 document.getElementById('cal-month-today').addEventListener('click', () => {
@@ -5787,7 +5801,7 @@ function closeLezione() { document.getElementById('lezione-overlay').classList.a
 document.getElementById('lezione-close').addEventListener('click', closeLezione);
 document.getElementById('lezione-cancel').addEventListener('click', closeLezione);
 document.getElementById('btn-add-lezione').addEventListener('click', () => openLezioneNew());
-document.getElementById('lezione-save').addEventListener('click', async () => {
+onSave('lezione-save', async () => {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   const data = val('lz-data');
   if (!data) { alert('La data è obbligatoria.'); return; }
@@ -6300,7 +6314,7 @@ document.getElementById('btn-add-todo').addEventListener('click', () => openTodo
 function closeTodoModal() { document.getElementById('todo-overlay').classList.add('hidden'); todoCtx = null; }
 document.getElementById('todo-close').addEventListener('click', closeTodoModal);
 document.getElementById('todo-cancel').addEventListener('click', closeTodoModal);
-document.getElementById('todo-save').addEventListener('click', async () => {
+onSave('todo-save', async () => {
   const titolo = document.getElementById('td-titolo').value.trim();
   if (!titolo) { alert('Il titolo è obbligatorio.'); return; }
   const attrs = {
@@ -6481,7 +6495,7 @@ document.getElementById('btn-orario-config-rm').addEventListener('click', async 
     renderOrario();
   } catch (err) { alert('Errore durante l\'eliminazione: ' + err.message); }
 });
-document.getElementById('orario-config-save').addEventListener('click', async () => {
+onSave('orario-config-save', async () => {
   if (!orarioConfigModalCtx) return;
   const { anno, id } = orarioConfigModalCtx;
   const titolo = document.getElementById('oc-titolo').value.trim();
@@ -6553,7 +6567,7 @@ function openOrarioPeriodo(anno, configId, ora) {
 function closeOrarioSlot() { document.getElementById('orario-slot-overlay').classList.add('hidden'); orarioSlotCtx = null; }
 document.getElementById('orario-slot-close').addEventListener('click', closeOrarioSlot);
 document.getElementById('orario-slot-cancel').addEventListener('click', closeOrarioSlot);
-document.getElementById('orario-slot-save').addEventListener('click', async () => {
+onSave('orario-slot-save', async () => {
   if (!orarioSlotCtx) return;
   const { anno, configId } = orarioSlotCtx;
   let newSlot = null;
@@ -7136,7 +7150,7 @@ function materialeCloneOverlay() {
   const u = DB.getMaterialeUser();
   return { added: [...(u.added || [])], edited: { ...(u.edited || {}) }, deleted: [...(u.deleted || [])] };
 }
-document.getElementById('materiale-save').addEventListener('click', async () => {
+onSave('materiale-save', async () => {
   const rec = {
     titolo: document.getElementById('mt-titolo').value.trim(),
     categoria: document.getElementById('mt-categoria').value,
@@ -7886,7 +7900,16 @@ function openForm(mode, ctx) {
 
 function closeForm() { formOverlay.classList.add('hidden'); formMode = null; formCtx = null; }
 
+// Invio + clic, o doppio clic, durante l'attesa di Firestore: il secondo
+// salvataggio va ignorato, altrimenti crea un alunno/voto duplicato
+let formSaving = false;
 async function saveForm() {
+  if (formSaving) return;
+  formSaving = true;
+  try { await saveFormImpl(); } finally { formSaving = false; }
+}
+
+async function saveFormImpl() {
   const val = id => document.getElementById(id)?.value.trim() ?? '';
   try {
     if (formMode === 'grade') {
@@ -7983,7 +8006,8 @@ async function saveForm() {
         s.peiProgrammazione = peiProgrammazione;
         s.note = val('f-note');
         await DB.put(s);
-        state.students.push(s);
+        // DB.put lo aggiunge già alla cache, che di norma È state.students
+        if (!state.students.includes(s)) state.students.push(s);
         closeForm();
         renderAll();
         openStudent(s.id);
@@ -8109,7 +8133,7 @@ document.getElementById('csv-file').addEventListener('change', async e => {
       return s;
     });
     await DB.putMany(docs);
-    state.students.push(...docs);
+    docs.forEach(s => { if (!state.students.includes(s)) state.students.push(s); });
     closeCsv();
     renderAll();
     alert(`Importati ${docs.length} alunni.`);
@@ -8503,12 +8527,14 @@ document.getElementById('import-file').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
   const text = await file.text();
-  const replace = confirm('OK = sostituisci tutti i dati attuali.\nAnnulla = unisci agli alunni esistenti.');
+  const replace = confirm('OK = sostituisci tutti i dati attuali con quelli del backup.\nAnnulla = unisci: aggiunge solo ciò che manca, senza cancellare né sovrascrivere nulla.');
   try {
-    const n = await DB.importJSON(text, { replace });
+    const { nuovi, aggiornati } = await DB.importJSON(text, { replace });
     state.students = await DB.all();
     renderAll();
-    alert(`Importati ${n} alunni.`);
+    alert(replace
+      ? `Ripristinati ${nuovi} alunni.`
+      : `Aggiunti ${nuovi} alunni nuovi, integrati ${aggiornati} alunni esistenti (voti/iscrizioni mancanti).`);
   } catch (err) {
     alert('File non valido: ' + err.message);
   }
